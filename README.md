@@ -22,12 +22,12 @@ It uses:
 
 ### 🎯 Key Features
 
-✅ Deploy via CLI or webhook
-✅ Store and stream logs via Redis
-✅ Track deployment status (queued, running, complete, failed)
-✅ Long polling support for GitHub-style updates
-✅ Fully configurable — pass directory, chain commands, and track jobs
-✅ Built for VPS, private servers, and minimal environments
+- ✅ Deploy via CLI or webhook
+- ✅ Store and stream logs via Redis
+- ✅ Track deployment status (queued, running, complete, failed)
+- ✅ Long polling support for GitHub-style updates
+- ✅ Fully configurable — pass directory, chain commands, and track jobs
+- ✅ Built for VPS, private servers, and minimal environments
 
 ### ⚙️ How It Works
 
