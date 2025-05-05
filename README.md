@@ -4,7 +4,7 @@ Shell-powered deployments for your VPS — smoothly, securely, streamably.
 
 #### Shell-powered VPS Deployment CLI
 
-##### Streamlined, secure, and real-time deployments for your VPS environments — from your terminal. <br>
+##### Streamlined, secure, and real-time deployments for your VPS environments — from your terminal. <br><br>
 
 ### 🔥 What is vps-deployster?
 
