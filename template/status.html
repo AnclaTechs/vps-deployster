@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>VPS - Deployster</title>
+    <style>
+      body {
+        background-color: #0f172a;
+        color: #f8fafc;
+        font-family: "Courier New", Courier, monospace;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        text-align: center;
+        height: 100vh;
+        margin: 0;
+        padding: 1rem;
+      }
+      h1 {
+        font-size: 2em;
+        margin-bottom: 0.5em;
+      }
+      p {
+        max-width: 400px;
+        line-height: 1.5;
+        color: #94a3b8;
+      }
+      a {
+        color: #38bdf8;
+        text-decoration: none;
+        margin-top: 1em;
+        border: 1px solid #38bdf8;
+        padding: 0.5em 1em;
+        border-radius: 5px;
+      }
+      a:hover {
+        background-color: #38bdf8;
+        color: #0f172a;
+      }
+      .pulse {
+        width: 14px;
+        height: 14px;
+        background: #10b981;
+        border-radius: 50%;
+        animation: pulse 1.5s infinite;
+        margin-bottom: 1rem;
+      }
+      @keyframes pulse {
+        0%,
+        100% {
+          transform: scale(1);
+          opacity: 0.6;
+        }
+        50% {
+          transform: scale(1.4);
+          opacity: 1;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="pulse"></div>
+    <h1>🐚 vps-Deployster is Live</h1>
+    <p>
+      Deployster is a lightweight, server-side continuous deployment tool
+      designed for VPS environments. Trigger deployments, monitor logs, and roll
+      back commits — all from GitHub or CLI.
+    </p>
+    <a href="https://github.com/AnclaTechs/vps-deployster" target="_blank"
+      >📘 View Documentation</a
+    >
+  </body>
+</html>
