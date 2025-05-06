@@ -1,3 +1,4 @@
+require("dotenv").config();
 const PORT = process.env.PORT || 3259;
 const express = require("express");
 const { exec } = require("child_process");
