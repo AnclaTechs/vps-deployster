@@ -10,6 +10,16 @@ app.get("/", (req, res) => {
 });
 
 app.post("/deploy", async (req, res) => {
+  const token = req.headers["x-deployster-token"];
+
+  if (!token || token !== process.env.DEPLOYSTER_TOKEN) {
+    return res.status(403).json({ error: "Unauthorized" });
+  }
+
+  {
+    /** PROCEED */
+  }
+
   const job_id = Date.now().toString();
   const { cd, commands } = req.body;
 
@@ -40,6 +50,15 @@ app.post("/deploy", async (req, res) => {
 });
 
 app.get("/status/:job_id", async (req, res) => {
+  const token = req.headers["x-deployster-token"];
+
+  if (!token || token !== process.env.DEPLOYSTER_TOKEN) {
+    return res.status(403).json({ error: "Unauthorized" });
+  }
+
+  {
+    /** PROCEED */
+  }
   const job_id = req.params.job_id;
   const status = await redisClient.get(`job:${job_id}:status`);
   const logs = await redisClient.get(`job:${job_id}:logs`);
