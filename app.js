@@ -14,9 +14,7 @@ app.post("/deploy", async (req, res) => {
   const token = req.headers["x-deployster-token"];
 
   if (!token || token !== process.env.DEPLOYSTER_TOKEN) {
-    return res
-      .status(403)
-      .json({ error: "Unauthorized", token, tokenLength: token.length });
+    return res.status(403).json({ error: "Unauthorized" });
   }
 
   {
