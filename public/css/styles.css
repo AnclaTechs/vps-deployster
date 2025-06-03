@@ -1,0 +1,104 @@
+html,
+body {
+  width: 100%;
+  overflow-x: hidden;
+  /* font-family: 'Poppins', sans-serif; */
+  font-family: "Montserrat", sans-serif;
+  font-optical-sizing: auto;
+  background: linear-gradient(135deg, #f3f4f6, #ffffff);
+  font-display: swap;
+}
+
+@media screen and (max-width: 600px) {
+    .background-container-bracket{
+        display: none;
+    } 
+
+    .auth-container{
+        margin-top: 30%;
+    }
+}
+
+.background-container {
+  background-image: url("https://img.freepik.com/free-photo/modern-data-center-providing-cloud-services-enabling-businesses-access-computing-resources-storage-demand-internet-server-room-infrastructure-3d-render-animation_482257-65963.jpg?t=st=1748627989~exp=1748631589~hmac=29a2db949ed8448b1208e1bd8b0a2ef1a0fa9765db61d9ace6f8e6cb1d076a02&w=1380");
+  background-size: cover;
+  background-repeat: no-repeat;
+  background-position: right;
+  width: 100%;
+  height: 100vh;
+  opacity: 1;
+}
+
+.dashboard{
+    background: rgba(255, 255, 255, 0.2);
+border-radius: 16px;
+box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+backdrop-filter: blur(5px);
+-webkit-backdrop-filter: blur(5px);
+border: 1px solid rgba(255, 255, 255, 0.27);
+}
+
+.active-plan{
+    height: 50px;
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background-color: 	#198754bb;
+    border-radius: 3px;
+    color: white;
+    font-weight: 600;
+}
+
+.select-plan{
+    height: 50px;
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background-color: 	#0D6EFDbb;
+    border-radius: 3px;
+    color: white;
+    font-weight: 600;
+}
+
+tr{
+    height: 50px;
+}
+
+.commitment-option{
+    height: 50px;
+    border: 1px solid #c9c9c9;
+    margin-bottom: 10px;
+    padding: 15px 0px 0px 40px;
+}
+
+.form-check-label{
+    font-weight: 500;
+}
+
+
+/** SIDENAV */
+.admin-container {
+    display: flex;
+    height: 100vh;
+  }
+  .sidebar {
+    width: 250px;
+    background: #333;
+    color: white;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+  }
+  .sidebar a {
+    color: white;
+    text-decoration: none;
+    margin-bottom: 10px;
+  }
+  .content {
+    flex: 1;
+    padding: 20px;
+  }
+  
+  /** END SIDE NAV */

@@ -1,10 +1,54 @@
 require("dotenv").config();
-const PORT = process.env.PORT || 3259;
+const path = require("path");
+const moment = require("moment");
+const expressLayout = require("express-ejs-layouts");
 const express = require("express");
 const { exec } = require("child_process");
-const app = express();
-app.use(express.json());
+const cors = require("cors");
 const redisClient = require("./redis");
+const app = express();
+const PORT = process.env.PORT || 3259;
+const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS || "*";
+const viewRoutes = require("./routes");
+const apiRoutes = require("./routes/api");
+const pool = require("./database");
+const { getSingleRow, createRowAndReturn } = require("./database/functions");
+const { RecordDoesNotExist } = require("./database/error");
+const {
+  addLogToDeploymentRecord,
+  markDeploymentAsComplete,
+} = require("./utils/functools");
+const { DEPLOYMENT_STATUS } = require("./utils/constants");
+
+// view engine setup
+app.set("views", path.join(__dirname, "template/ejs-views"));
+app.use(expressLayout);
+app.set("view engine", "ejs");
+app.use("/public", express.static(path.join(__dirname, "public")));
+
+app.use(cors());
+// BODY PARSER => application/json
+app.use(express.json());
+// BODY PARSER => application/x-www-form-urlencoded
+app.use(express.urlencoded({ extended: true }));
+
+// CORS
+app.use(function (req, res, next) {
+  res.header("Access-Control-Allow-Origin", ALLOWED_ORIGINS);
+  res.header(
+    "Access-Control-Allow-Headers",
+    "Origin, X-Requested-With, Content-Type, Accept"
+  );
+  next();
+});
+
+app.use((err, req, res, next) => {
+  console.error("Unhandled Error:", err);
+  res.status(500).json({ error: "Internal Server Error" });
+});
+
+app.use("", viewRoutes);
+app.use("/api", apiRoutes);
 
 app.get("/", (req, res) => {
   res.sendFile(__dirname + "/template/status.html");
@@ -20,9 +64,74 @@ app.post("/deploy", async (req, res) => {
   {
     /** PROCEED */
   }
-
+  let ACTIVE_PROJECT_PORT;
+  let deploymentRecord;
+  const deploymentTimestamp = moment();
   const job_id = Date.now().toString();
-  const { cd, commands } = req.body;
+  const { cd, commands, commit_hash } = req.body;
+
+  try {
+    /** GET PROJECT CURRENT PORT */
+    ACTIVE_PROJECT_PORT = await getProjectPort("/var/www/my-app");
+    if (ACTIVE_PROJECT_PORT) {
+      console.log(`Detected port: ${ACTIVE_PROJECT_PORT}`);
+    } else {
+      console.log("Port not found.");
+    }
+  } catch (error) {
+    console.error("Error determining PORT no:", error);
+  }
+
+  try {
+    /**
+     * Default to first user in DB
+     * @TODO - Create a Group system that manages this beeter
+     *  */
+    const user = await getSingleRow(
+      "SELECT * FROM users ORDER BY id DESC LIMIT 1"
+    );
+
+    let projectInView;
+
+    try {
+      projectInView = await getSingleRow(
+        "SELECT * FROM projects WHERE app_local_path = ?",
+        [cd]
+      );
+      await pool.run(
+        "UPDATE projects SET current_head = ?, tcp_port = ? WHERE id = ?",
+        [commit_hash, ACTIVE_PROJECT_PORT, projectInView.id]
+      );
+    } catch (error) {
+      if (error instanceof RecordDoesNotExist) {
+        projectInView = await createRowAndReturn(
+          "INSERT INTO projects (user_id, current_head, app_local_path, tcp_port) VALUES (?, ?, ?, ?)",
+          [user.id, commit_hash, cd, ACTIVE_PROJECT_PORT]
+        );
+      } else {
+        throw error;
+      }
+    }
+  } catch (error) {
+    console.error("Error processing project metadata:", error);
+  }
+
+  try {
+    // CREATE DEPLOYMENT RECORD LOG
+    deploymentRecord = await createRowAndReturn(
+      "INSERT INTO deployments (user_id, project_id, commit_hash, action, status, started_at) VALUES (?, ?, ?, ?, ?, ?)",
+      [
+        user.id,
+        projectInView.id,
+        commit_hash,
+        "DEPLOY",
+        "RUNNING",
+        deploymentTimestamp,
+      ]
+    );
+  } catch (error) {
+    console.error("Error recording deployment log:", error);
+  }
 
   await redisClient.set(`job:${job_id}:status`, "queued");
   await redisClient.del(`job:${job_id}:logs`);
@@ -33,20 +142,76 @@ app.post("/deploy", async (req, res) => {
     await redisClient.set(`job:${job_id}:status`, "running");
     for (let i = 0; i < commands.length; i++) {
       const command = `cd ${cd} && ${commands[i]}`;
-      await redisClient.append(
-        `job:${job_id}:logs`,
-        `\n[${i + 1}] $ ${commands[i]}\n`
-      );
+      const formattedCommand = `\n[${i + 1}] $ ${commands[i]}\n`;
+      await redisClient.append(`job:${job_id}:logs`, formattedCommand);
+
       try {
         const output = await runShell(command);
         await redisClient.append(`job:${job_id}:logs`, output);
+        if (deploymentRecord)
+          await addLogToDeploymentRecord(deploymentRecord.id, output);
       } catch (err) {
         await redisClient.append(`job:${job_id}:logs`, `[ERROR] ${err}\n`);
         await redisClient.set(`job:${job_id}:status`, "failed");
+        if (deploymentRecord) {
+          await addLogToDeploymentRecord(deploymentRecord.id, output);
+          await markDeploymentAsComplete(
+            deploymentRecord.id,
+            DEPLOYMENT_STATUS.FAILED,
+            null
+          );
+        }
         return;
       }
     }
     await redisClient.set(`job:${job_id}:status`, "complete");
+    await markDeploymentAsComplete(
+      deploymentRecord.id,
+      DEPLOYMENT_STATUS.COMPLETED,
+      null
+    );
+
+    // STORE ARTIFACT
+    var newLogMessage = "\nCompressing artifact\n";
+    await redisClient.set(`job:${job_id}:logs`, newLogMessage);
+    await addLogToDeploymentRecord(deploymentRecord.id, newLogMessage);
+    const cleanCdPath = cd.replace(/^\/*|\/*$/g, "").replace(/[^\w\-\/]/g, "_");
+    const artifactBase = "/var/backups/deploy-artifacts";
+    const artifactDir = path.join(artifactBase, cleanCdPath);
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const shortcommitHash = commit_hash.slice(0, 8);
+    const artifactPath = path.join(
+      artifactDir,
+      `deploy-${timestamp}-${shortcommitHash}.tar.gz`
+    );
+
+    try {
+      // await fs.mkdir(artifactDir, { recursive: true });
+      var newLogMessage = await runShell(`mkdir -p ${artifactDir}`);
+      await redisClient.set(`job:${job_id}:logs`, newLogMessage);
+      await addLogToDeploymentRecord(deploymentRecord.id, newLogMessage);
+
+      // Create archive
+      var newLogMessage = await runShell(
+        `tar -czf ${artifactPath} -C "${cd}" .`
+      );
+      await redisClient.set(`job:${job_id}:logs`, newLogMessage);
+      await addLogToDeploymentRecord(deploymentRecord.id, newLogMessage);
+
+      var newLogMessage = `\n[INFO] Artifact created at ${artifactPath}\n`;
+      await redisClient.append(`job:${job_id}:logs`, newLogMessage);
+      await addLogToDeploymentRecord(deploymentRecord.id, newLogMessage);
+
+      await markDeploymentAsComplete(
+        deploymentRecord.id,
+        DEPLOYMENT_STATUS.COMPLETED,
+        artifactPath
+      );
+    } catch (err) {
+      var newLogMessage = `[WARN] Artifact generation failed: ${err.message}\n`;
+      await redisClient.append(`job:${job_id}:logs`, newLogMessage);
+      await addLogToDeploymentRecord(deploymentRecord.id, newLogMessage);
+    }
   })();
 });
 

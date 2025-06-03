@@ -140,3 +140,6 @@ backward.sql
 # Jetbrains
 .idea
 daily-record-for-hubs.pdf
+
+*.sqlite
+*.sqlite-journal

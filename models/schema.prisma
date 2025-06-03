@@ -1,0 +1,67 @@
+datasource db {
+    provider = "sqlite"
+    url      = env("DATABASE_URL")
+}
+
+model User {
+    id           Int           @id @default(autoincrement())
+    username     String        @unique
+    email        String
+    password     String
+    created_at   DateTime      @default(now())
+    updated_at   DateTime?
+    deployments  Deployment[]
+    activityLogs ActivityLog[]
+    projects     Project[]
+
+    @@map("users")
+}
+
+model Project {
+    id                    Int          @id @default(autoincrement())
+    user                  User         @relation(fields: [user_id], references: [id])
+    user_id               Int
+    current_head          String?
+    app_local_path        String?
+    app_url               String?
+    repository_url        String?
+    tcp_port              String?
+    log_file_i_location   String?
+    log_file_ii_location  String?
+    log_file_iii_location String?
+    deployments           Deployment[]
+
+    @@map("projects")
+}
+
+model Deployment {
+    id            Int       @id @default(autoincrement())
+    user          User      @relation(fields: [user_id], references: [id])
+    user_id       Int
+    project       Project?  @relation(fields: [project_id], references: [id])
+    project_id    Int
+    commit_hash   String
+    action        String // DEPLOY or ROLLBACK
+    status        String // RUNNING, COMPLETED or FAILED
+    started_at    DateTime  @default(now())
+    finished_at   DateTime?
+    log_output    String?
+    artifact_path String?
+
+    activityLogs ActivityLog[]
+
+    @@map("deployments")
+}
+
+model ActivityLog {
+    id            Int         @id @default(autoincrement())
+    user          User?       @relation(fields: [user_id], references: [id])
+    user_id       Int?
+    deployment    Deployment? @relation(fields: [deployment_id], references: [id])
+    deployment_id Int?
+    action        String // DEPLOY or ROLLBACK
+    message       String?
+    created_at    DateTime    @default(now())
+
+    @@map("activity_logs")
+}

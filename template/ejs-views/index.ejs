@@ -1,0 +1,63 @@
+<div id="app">
+  <!--Loading Window-->
+  <div v-if="$store.state.showLoader" class="loading-screen">
+    <span class="loader"></span>
+  </div>
+  <!--End Loading Window-->
+  <!--Component Window-->
+  <router-view v-else v-slot="{ Component }">
+    <transition name="fade">
+      <component :is="Component" />
+    </transition>
+  </router-view>
+  <!--End Component Window-->
+</div>
+
+<style>
+  .loading-screen {
+    height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+  .loader {
+    color: #21288f;
+    font-family: Consolas, Menlo, Monaco, monospace;
+    font-weight: bold;
+    font-size: 78px;
+    opacity: 0.8;
+  }
+  .loader:before {
+    content: "{";
+    display: inline-block;
+    animation: pulse 0.4s alternate infinite ease-in-out;
+  }
+  .loader:after {
+    content: "}";
+    display: inline-block;
+    animation: pulse 0.4s 0.3s alternate infinite ease-in-out;
+  }
+
+  @keyframes pulse {
+    to {
+      transform: scale(0.8);
+      opacity: 0.5;
+    }
+  }
+
+  .fade-enter-active,
+  .fade-leave-active {
+    transition: opacity 0.3s ease-in-out;
+  }
+  .fade-enter-from,
+  .fade-leave-to {
+    opacity: 0;
+  }
+</style>
+
+<%- contentFor('footer') %>
+<script>
+  window.VUE_BASE_API_URL = "<%= VUE_BASE_API_URL %>";
+</script>
+<script src="/vue/app.js"></script>
