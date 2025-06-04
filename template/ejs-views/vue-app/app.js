@@ -37,6 +37,7 @@ const routes = [
   { path: "/register", component: components.RegisterPage },
   {
     path: "/dashboard",
+    name: "MainDashboard",
     component: components.DashboardPage,
     meta: { requiresAuth: true },
   },
