@@ -7,7 +7,7 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "nodemon app.js",
     "start": "node app.js",
-    "makemigrations": "prisma migrate dev --skip-seed",
+    "make-migrations": "prisma migrate dev --skip-seed",
     "migrate": "prisma migrate dev",
     "deploy-migrations": "prisma migrate deploy"
   },
