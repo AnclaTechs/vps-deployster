@@ -114,7 +114,7 @@ async function loginUser(req, res) {
     }
     const token = await jwtr.sign(
       { userId: user.id, email: user.email, username: user.username },
-      process.env.JSON_WEB_TOKEN_KEY
+      process.env.DEPLOYSTER_JSON_WEB_TOKEN_KEY
     );
 
     return res.json({

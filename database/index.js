@@ -5,7 +5,7 @@ const { Pool } = require("pg");
 const sqlite3 = require("sqlite3").verbose();
 const { open } = require("sqlite");
 
-const SQL_ENGINE = process.env.DATABASE_ENGINE || "sqlite"; // Default to sqlite if none is available
+const SQL_ENGINE = process.env.DEPLOYSTER_DATABASE_ENGINE || "sqlite"; // Default to sqlite if none is available
 
 /**
  * Validates required environment variables for MySQL and PostgreSQL.
@@ -48,14 +48,14 @@ const getDatabaseConfig = () => {
     case "mysql":
       return {
         ...baseConfig,
-        port: process.env.DATABASE_PORT || 3306,
+        port: process.env.DATABASE_DEPLOYSTER_PORT || 3306,
         connectionLimit: process.env.MYSQL_CONNECTION_LIMIT || 10,
         queueLimit: process.env.MYSQL_QUEUE_LIMIT || 0,
       };
     case "postgres":
       return {
         ...baseConfig,
-        port: process.env.DATABASE_PORT || 5432,
+        port: process.env.DATABASE_DEPLOYSTER_PORT || 5432,
         max: process.env.PG_MAX_CONNECTIONS || 20,
         idleTimeoutMillis: process.env.PG_IDLE_TIMEOUT || 30000,
       };
@@ -89,9 +89,9 @@ const initiateEnginePool = async () => {
         return pool;
 
       case "postgres":
-        const pgConfig = process.env.DATABASE_URL
+        const pgConfig = process.env.DEPLOYSTER_DATABASE_URL
           ? {
-              connectionString: process.env.DATABASE_URL,
+              connectionString: process.env.DEPLOYSTER_DATABASE_URL,
               ssl: { rejectUnauthorized: false },
             }
           : getDatabaseConfig();
@@ -133,9 +133,9 @@ if (SQL_ENGINE === "mysql") {
   pool = mysql.createPool(getDatabaseConfig());
 } else if (SQL_ENGINE === "postgres") {
   pool = new Pool(
-    process.env.DATABASE_URL
+    process.env.DEPLOYSTER_DATABASE_URL
       ? {
-          connectionString: process.env.DATABASE_URL,
+          connectionString: process.env.DEPLOYSTER_DATABASE_URL,
           ssl: { rejectUnauthorized: false },
         }
       : getDatabaseConfig()

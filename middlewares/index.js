@@ -9,7 +9,10 @@ exports.authenticateUser = async (req, res, next) => {
     return res.status(401).json({ error: "Unauthorized: No token provided" });
   }
   try {
-    const decoded = await jwtr.verify(token, process.env.JSON_WEB_TOKEN_KEY);
+    const decoded = await jwtr.verify(
+      token,
+      process.env.DEPLOYSTER_JSON_WEB_TOKEN_KEY
+    );
     try {
       let user;
       if (decoded?.username.includes("@")) {

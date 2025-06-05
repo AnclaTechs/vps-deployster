@@ -2,11 +2,11 @@ const { RecordDoesNotExist, NonUniqueRecordError } = require("./error");
 const pool = require("./index");
 
 const getSingleRow = async (sql, params) => {
-  const engine = process.env.DATABASE_ENGINE;
+  const engine = process.env.DEPLOYSTER_DATABASE_ENGINE;
 
   if (!["postgres", "mysql", "sqlite"].includes(engine)) {
     throw new Error(
-      "Unsupported DATABASE_ENGINE. Use 'postgres', 'mysql', or 'sqlite'."
+      "Unsupported DEPLOYSTER_DATABASE_ENGINE. Use 'postgres', 'mysql', or 'sqlite'."
     );
   }
 
@@ -57,13 +57,13 @@ const createRowAndReturn = async (
   existingConnection
 ) => {
   let connection;
-  const isPostgres = process.env.DATABASE_ENGINE === "postgres";
-  const isMySQL = process.env.DATABASE_ENGINE === "mysql";
-  const isSQLite = process.env.DATABASE_ENGINE === "sqlite";
+  const isPostgres = process.env.DEPLOYSTER_DATABASE_ENGINE === "postgres";
+  const isMySQL = process.env.DEPLOYSTER_DATABASE_ENGINE === "mysql";
+  const isSQLite = process.env.DEPLOYSTER_DATABASE_ENGINE === "sqlite";
 
   if (!isPostgres && !isMySQL && !isSQLite) {
     throw new Error(
-      "Unsupported DATABASE_ENGINE. Use 'postgres', 'mysql' or 'sqlite'."
+      "Unsupported DEPLOYSTER_DATABASE_ENGINE. Use 'postgres', 'mysql' or 'sqlite'."
     );
   }
 

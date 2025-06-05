@@ -7,7 +7,7 @@ const { exec } = require("child_process");
 const cors = require("cors");
 const redisClient = require("./redis");
 const app = express();
-const PORT = process.env.PORT || 3259;
+const DEPLOYSTER_PORT = process.env.DEPLOYSTER_PORT || 3259;
 const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS || "*";
 const viewRoutes = require("./routes");
 const apiRoutes = require("./routes/api");
@@ -64,7 +64,7 @@ app.post("/deploy", async (req, res) => {
   {
     /** PROCEED */
   }
-  let ACTIVE_PROJECT_PORT;
+  let ACTIVE_PROJECT_DEPLOYSTER_PORT;
   let deploymentRecord;
   const deploymentTimestamp = moment();
   const job_id = Date.now().toString();
@@ -100,15 +100,15 @@ app.post("/deploy", async (req, res) => {
   }
 
   try {
-    /** GET PROJECT CURRENT PORT */
-    ACTIVE_PROJECT_PORT = await getProjectPort(cd);
-    if (ACTIVE_PROJECT_PORT) {
-      console.log(`Detected port: ${ACTIVE_PROJECT_PORT}`);
+    /** GET PROJECT CURRENT DEPLOYSTER_PORT */
+    ACTIVE_PROJECT_DEPLOYSTER_PORT = await getProjectPort(cd);
+    if (ACTIVE_PROJECT_DEPLOYSTER_PORT) {
+      console.log(`Detected port: ${ACTIVE_PROJECT_DEPLOYSTER_PORT}`);
     } else {
       console.log("Port not found.");
     }
   } catch (error) {
-    console.error("Error determining PORT no:", error);
+    console.error("Error determining DEPLOYSTER_PORT no:", error);
   }
 
   try {
@@ -129,13 +129,13 @@ app.post("/deploy", async (req, res) => {
       );
       await pool.run(
         "UPDATE projects SET current_head = ?, tcp_port = ? WHERE id = ?",
-        [commit_hash, ACTIVE_PROJECT_PORT, projectInView.id]
+        [commit_hash, ACTIVE_PROJECT_DEPLOYSTER_PORT, projectInView.id]
       );
     } catch (error) {
       if (error instanceof RecordDoesNotExist) {
         projectInView = await createRowAndReturn(
           "INSERT INTO projects (user_id, current_head, app_local_path, tcp_port) VALUES (?, ?, ?, ?)",
-          [user.id, commit_hash, cd, ACTIVE_PROJECT_PORT]
+          [user.id, commit_hash, cd, ACTIVE_PROJECT_DEPLOYSTER_PORT]
         );
       } else {
         throw error;
@@ -275,6 +275,6 @@ function runShell(cmd) {
   });
 }
 
-app.listen(PORT, () =>
-  console.log(`🚀 Deployster Server running on port ${PORT}`)
+app.listen(DEPLOYSTER_PORT, () =>
+  console.log(`🚀 Deployster Server running on port ${DEPLOYSTER_PORT}`)
 );

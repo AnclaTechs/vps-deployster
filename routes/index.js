@@ -2,11 +2,11 @@ var express = require("express");
 var router = express.Router();
 const path = require("path");
 const fs = require("fs");
-const ADMIN_PATH = process.env.ADMIN_PATH || "app";
-const PORT = process.env.PORT || 3259;
+const DEPLOYSTER_ADMIN_PATH = process.env.DEPLOYSTER_ADMIN_PATH || "app";
+const DEPLOYSTER_PORT = process.env.DEPLOYSTER_PORT || 3259;
 
-router.get(`/${ADMIN_PATH}`, (req, res) => {
-  const VUE_BASE_API_URL = `http://127.0.0.1:${PORT}/api`;
+router.get(`/${DEPLOYSTER_ADMIN_PATH}`, (req, res) => {
+  const VUE_BASE_API_URL = `http://127.0.0.1:${DEPLOYSTER_PORT}/api`;
   res.render("index", {
     VUE_BASE_API_URL,
   });
@@ -21,8 +21,8 @@ router.get("/vue/{*any}", (req, res) => {
   );
 
   const referer = req.headers.referer || req.headers.origin;
-  const protocol = process.env.PROTOCOL || "http";
-  const baseURL = `${protocol}://${process.env.VPS_PUBLIC_IP}:${process.env.PORT}`;
+  const protocol = process.env.DEPLOYSTER_PROTOCOL || "http";
+  const baseURL = `${protocol}://${process.env.DEPLOYSTER_VPS_PUBLIC_IP}:${process.env.DEPLOYSTER_PORT}`;
 
   if (!referer || !referer.startsWith(baseURL)) {
     return res.status(403).send("Access Denied");
