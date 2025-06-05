@@ -9,7 +9,7 @@
     "start": "node app.js",
     "makemigrations": "prisma migrate dev --skip-seed",
     "migrate": "prisma migrate dev",
-    "force-migrate": "prisma migrate deploy"
+    "deploy-migrations": "prisma migrate deploy"
   },
   "prisma": {
     "schema": "models/schema.prisma"
