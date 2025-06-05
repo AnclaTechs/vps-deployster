@@ -20,7 +20,7 @@ body {
 }
 
 .background-container {
-  background-image: url("https://img.freepik.com/free-photo/modern-data-center-providing-cloud-services-enabling-businesses-access-computing-resources-storage-demand-internet-server-room-infrastructure-3d-render-animation_482257-65963.jpg?t=st=1748627989~exp=1748631589~hmac=29a2db949ed8448b1208e1bd8b0a2ef1a0fa9765db61d9ace6f8e6cb1d076a02&w=1380");
+  background-image: url("https://res.cloudinary.com/ancla8techs4/image/upload/v1749118863/deployster-server-imagination_v1e6fz.png?t=st=1748627989~exp=1748631589~hmac=29a2db949ed8448b1208e1bd8b0a2ef1a0fa9765db61d9ace6f8e6cb1d076a02&w=1380");
   background-size: cover;
   background-repeat: no-repeat;
   background-position: right;
