@@ -71,7 +71,12 @@ app.post("/deploy", async (req, res) => {
   const { cd, commands, commit_hash } = req.body;
 
   if (!commit_hash) {
-    // BACKWARD COMPACTIBILITY
+    // FOR version 1.0 BACKWARD COMPACTIBILITY
+    await redisClient.set(`job:${job_id}:status`, "queued");
+    await redisClient.del(`job:${job_id}:logs`);
+
+    res.json({ job_id });
+
     (async () => {
       await redisClient.set(`job:${job_id}:status`, "running");
       for (let i = 0; i < commands.length; i++) {
