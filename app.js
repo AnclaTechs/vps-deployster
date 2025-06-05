@@ -70,9 +70,33 @@ app.post("/deploy", async (req, res) => {
   const job_id = Date.now().toString();
   const { cd, commands, commit_hash } = req.body;
 
+  if (!commit_hash) {
+    // BACKWARD COMPACTIBILITY
+    (async () => {
+      await redisClient.set(`job:${job_id}:status`, "running");
+      for (let i = 0; i < commands.length; i++) {
+        const command = `cd ${cd} && ${commands[i]}`;
+        await redisClient.append(
+          `job:${job_id}:logs`,
+          `\n[${i + 1}] $ ${commands[i]}\n`
+        );
+        try {
+          const output = await runShell(command);
+          await redisClient.append(`job:${job_id}:logs`, output);
+        } catch (err) {
+          await redisClient.append(`job:${job_id}:logs`, `[ERROR] ${err}\n`);
+          await redisClient.set(`job:${job_id}:status`, "failed");
+          return;
+        }
+      }
+      await redisClient.set(`job:${job_id}:status`, "complete");
+    })();
+    return;
+  }
+
   try {
     /** GET PROJECT CURRENT PORT */
-    ACTIVE_PROJECT_PORT = await getProjectPort("/var/www/my-app");
+    ACTIVE_PROJECT_PORT = await getProjectPort(cd);
     if (ACTIVE_PROJECT_PORT) {
       console.log(`Detected port: ${ACTIVE_PROJECT_PORT}`);
     } else {
