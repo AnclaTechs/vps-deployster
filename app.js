@@ -206,7 +206,10 @@ app.post("/deploy", async (req, res) => {
     var newLogMessage = "\nCompressing artifact\n";
     await redisClient.set(`job:${job_id}:logs`, newLogMessage);
     await addLogToDeploymentRecord(deploymentRecord.id, newLogMessage);
-    const cleanCdPath = cd.replace(/^\/*|\/*$/g, "").replace(/[^\w\-\/]/g, "_");
+    const cleanCdPath = cd
+      .replace(/^\/*|\/*$/g, "") // Remove leading/trailing slashes
+      .replace(/[^\w\-\/]/g, "_") // Replace non-word, non-hyphen, non-slash characters with underscore _
+      .replace(/\//g, "_"); // Replace slash with underscore _
     const artifactBase = path.join(__dirname, "deploy-artifacts");
     const artifactDir = path.join(artifactBase, cleanCdPath);
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
