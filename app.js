@@ -1,4 +1,5 @@
 require("dotenv").config();
+const moment = require("moment");
 const path = require("path");
 const expressLayout = require("express-ejs-layouts");
 const express = require("express");
@@ -68,7 +69,7 @@ app.post("/deploy", async (req, res) => {
   let deploymentRecord;
   let user;
   let projectInView;
-  const deploymentTimestamp = new Date();
+  const deploymentTimestamp = moment().format("yyyy-MM-dd HH:mm:ss");
   const job_id = Date.now().toString();
   const { cd, commands, commit_hash } = req.body;
 
