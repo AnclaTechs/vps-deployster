@@ -1,4 +1,3 @@
-const moment = require("moment");
 const bcrypt = require("bcrypt");
 const JWTR = require("jwt-redis").default;
 const pool = require("../database/index");
@@ -46,7 +45,7 @@ async function createUser(req, res) {
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
 
-        const timestamp = moment();
+        const timestamp = new Date();
         await pool.run(
           "INSERT INTO users (username, email, password, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
           [username, email, hashedPassword, timestamp, timestamp]

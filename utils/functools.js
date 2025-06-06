@@ -1,5 +1,4 @@
 const fs = require("fs");
-const moment = require("moment");
 const path = require("path");
 const dotenv = require("dotenv");
 const pool = require("../database/index");
@@ -89,7 +88,7 @@ async function addLogToDeploymentRecord(deploymentId, logData) {
 }
 
 async function markDeploymentAsComplete(deploymentId, status, artifactPath) {
-  const timestamp = moment();
+  const timestamp = new Date();
   const currentDeploymentRecord = await getSingleRow(
     "SELECT * FROM deployments WHERE id = ?",
     [deploymentId]
