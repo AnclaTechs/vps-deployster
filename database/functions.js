@@ -45,7 +45,8 @@ const getSingleRow = async (sql, params) => {
     }
   } finally {
     if (connection && engine !== "sqlite") {
-      connection.release?.(); // Release the connection where it's avaialable
+      // Release the connection where it's avaialable
+      connection.release();
     }
   }
 };
@@ -143,8 +144,11 @@ const createRowAndReturn = async (
     }
     throw error;
   } finally {
-    if (!existingConnection || !isSQLite) {
-      await connection.release(); // Release the connection where it's avaialable
+    if (!existingConnection) {
+      if (!isSQLite) {
+        // Release the connection where it's avaialable
+        await connection.release();
+      }
     }
   }
 };
