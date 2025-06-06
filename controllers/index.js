@@ -216,7 +216,7 @@ async function getAllProjects(req, res) {
       status: true,
       message: "Projects returned successfully",
       count: projectCount.total_count,
-      lastDeployment: Array.from(projects)[0]?.finisehd_at || "N?A",
+      lastDeployment: Array.from(projects)[0]?.finished_at || "N?A",
       data: projects,
     });
   } catch (error) {
