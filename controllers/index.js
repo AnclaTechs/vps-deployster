@@ -191,12 +191,13 @@ async function getAllProjects(req, res) {
       "SELECT prjts.*, dep.finished_at FROM projects prjts INNER JOIN deployments dep ON dep.project_id = prjts.id WHERE prjts.user_id = ? ORDER BY dep.finished_at DESC",
       [user.id]
     );
-    projects = projects.map((projectData) => {
-      return {
+
+    projects = await Promise.all(
+      projects.map(async (projectData) => ({
         ...projectData,
-        status: isPortActive(projectData.tcp_port),
-      };
-    });
+        status: await isPortActive(projectData.tcp_port),
+      }))
+    );
 
     return res.json({
       status: true,
