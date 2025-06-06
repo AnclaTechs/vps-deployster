@@ -67,6 +67,7 @@ app.post("/deploy", async (req, res) => {
   }
   let ACTIVE_PROJECT_DEPLOYSTER_PORT;
   let deploymentRecord;
+  let user;
   const deploymentTimestamp = moment();
   const job_id = Date.now().toString();
   const { cd, commands, commit_hash } = req.body;
@@ -117,9 +118,7 @@ app.post("/deploy", async (req, res) => {
      * Default to first user in DB
      * @TODO - Create a Group system that manages this beeter
      *  */
-    const user = await getSingleRow(
-      "SELECT * FROM users ORDER BY id DESC LIMIT 1"
-    );
+    user = await getSingleRow("SELECT * FROM users ORDER BY id DESC LIMIT 1");
 
     let projectInView;
 
