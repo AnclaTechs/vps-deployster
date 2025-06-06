@@ -70,7 +70,13 @@ const createRowAndReturn = async (
   if (existingConnection) {
     connection = existingConnection;
   } else {
-    connection = isPostgres ? await pool.connect() : await pool.getConnection();
+    if (isSQLite) {
+      connection = pool;
+    } else {
+      connection = isPostgres
+        ? await pool.connect()
+        : await pool.getConnection();
+    }
   }
 
   try {
