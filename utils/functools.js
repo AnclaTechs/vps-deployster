@@ -88,6 +88,7 @@ async function addLogToDeploymentRecord(deploymentId, logData) {
 }
 
 async function markDeploymentAsComplete(deploymentId, status, artifactPath) {
+  const timestamp = moment();
   const currentDeploymentRecord = await getSingleRow(
     "SELECT * FROM deployments WHERE id = ?",
     [deploymentId]
@@ -98,14 +99,14 @@ async function markDeploymentAsComplete(deploymentId, status, artifactPath) {
   ) {
     if (artifactPath) {
       await pool.run(
-        "UPDATE deployments SET status = ?, artifact_path = ? WHERE id = ?",
-        [status, artifactPath, currentDeploymentRecord.id]
+        "UPDATE deployments SET status = ?, finished_at = ?, artifact_path = ? WHERE id = ?",
+        [status, timestamp, artifactPath, currentDeploymentRecord.id]
       );
     } else {
-      await pool.run("UPDATE deployments SET status = ? WHERE id = ?", [
-        status,
-        deploymentId,
-      ]);
+      await pool.run(
+        "UPDATE deployments SET status = ?, finished_at = ? WHERE id = ?",
+        [status, timestamp, deploymentId]
+      );
     }
   } else {
     throw Error("Invalid deployment status");
