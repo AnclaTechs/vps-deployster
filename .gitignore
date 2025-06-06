@@ -143,3 +143,6 @@ daily-record-for-hubs.pdf
 
 *.sqlite
 *.sqlite-journal
+
+# Build archive
+deploy-artifacts/

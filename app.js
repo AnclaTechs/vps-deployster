@@ -133,6 +133,7 @@ app.post("/deploy", async (req, res) => {
     } catch (error) {
       if (error instanceof RecordDoesNotExist) {
         projectInView = await createRowAndReturn(
+          "projects",
           "INSERT INTO projects (user_id, current_head, app_local_path, tcp_port) VALUES (?, ?, ?, ?)",
           [user.id, commit_hash, cd, ACTIVE_PROJECT_DEPLOYSTER_PORT]
         );
@@ -147,6 +148,7 @@ app.post("/deploy", async (req, res) => {
   try {
     // CREATE DEPLOYMENT RECORD LOG
     deploymentRecord = await createRowAndReturn(
+      "deployments",
       "INSERT INTO deployments (user_id, project_id, commit_hash, action, status, started_at) VALUES (?, ?, ?, ?, ?, ?)",
       [
         user.id,
@@ -179,10 +181,11 @@ app.post("/deploy", async (req, res) => {
         if (deploymentRecord)
           await addLogToDeploymentRecord(deploymentRecord.id, output);
       } catch (err) {
-        await redisClient.append(`job:${job_id}:logs`, `[ERROR] ${err}\n`);
+        const errorOutput = `[ERROR] ${err}\n`;
+        await redisClient.append(`job:${job_id}:logs`, errorOutput);
         await redisClient.set(`job:${job_id}:status`, "failed");
         if (deploymentRecord) {
-          await addLogToDeploymentRecord(deploymentRecord.id, output);
+          await addLogToDeploymentRecord(deploymentRecord.id, errorOutput);
           await markDeploymentAsComplete(
             deploymentRecord.id,
             DEPLOYMENT_STATUS.FAILED,
@@ -204,7 +207,7 @@ app.post("/deploy", async (req, res) => {
     await redisClient.set(`job:${job_id}:logs`, newLogMessage);
     await addLogToDeploymentRecord(deploymentRecord.id, newLogMessage);
     const cleanCdPath = cd.replace(/^\/*|\/*$/g, "").replace(/[^\w\-\/]/g, "_");
-    const artifactBase = "/var/backups/deploy-artifacts";
+    const artifactBase = path.join(__dirname, "deploy-artifacts");
     const artifactDir = path.join(artifactBase, cleanCdPath);
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
     const shortcommitHash = commit_hash.slice(0, 8);

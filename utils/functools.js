@@ -1,6 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const dotenv = require("dotenv");
+const pool = require("../database/index");
 const { execSync } = require("child_process");
 const { DEPLOYMENT_STATUS } = require("./constants");
 const { getSingleRow } = require("../database/functions");
