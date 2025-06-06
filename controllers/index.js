@@ -189,7 +189,7 @@ async function getAllProjects(req, res) {
 
     let projects = await pool.all(
       `
-        SELECT prjts.*, strftime('%Y-%m-%d %H:%M:%S', dep.finished_at) as finished_at
+        SELECT prjts.*, dep.finished_at
         FROM projects prjts
         INNER JOIN (
           SELECT project_id, MAX(finished_at) AS latest_finished_at
@@ -205,12 +205,12 @@ async function getAllProjects(req, res) {
       [user.id]
     );
 
-    projects = await Promise.all(
-      projects.map(async (projectData) => ({
-        ...projectData,
-        status: await isPortActive(projectData.tcp_port),
-      }))
-    );
+    // projects = await Promise.all(
+    //   projects.map(async (projectData) => ({
+    //     ...projectData,
+    //     status: await isPortActive(projectData.tcp_port),
+    //   }))
+    // );
 
     return res.json({
       status: true,
