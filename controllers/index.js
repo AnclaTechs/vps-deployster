@@ -189,7 +189,7 @@ async function getAllProjects(req, res) {
 
     let projects = await pool.all(
       `
-        SELECT prjts.*, dep.finished_at
+        SELECT prjts.*, dep.finished_at, dep.started_at
         FROM projects prjts
         INNER JOIN (
           SELECT project_id, MAX(finished_at) AS latest_finished_at
