@@ -143,8 +143,8 @@ const createRowAndReturn = async (
     }
     throw error;
   } finally {
-    if (!existingConnection) {
-      await connection.release?.(); // Release the connection where it's avaialable
+    if (!existingConnection || !isSQLite) {
+      await connection.release(); // Release the connection where it's avaialable
     }
   }
 };
