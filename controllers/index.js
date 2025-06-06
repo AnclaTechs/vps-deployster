@@ -187,7 +187,20 @@ async function getAllProjects(req, res) {
     );
 
     let projects = await pool.all(
-      "SELECT prjts.*, dep.finished_at FROM projects prjts INNER JOIN deployments dep ON dep.project_id = prjts.id WHERE prjts.user_id = ? ORDER BY dep.finished_at DESC",
+      `
+        SELECT prjts.*, dep.finished_at
+        FROM projects prjts
+        INNER JOIN (
+          SELECT project_id, MAX(finished_at) AS latest_finished_at
+          FROM deployments
+          GROUP BY project_id
+        ) latest_dep
+          ON latest_dep.project_id = prjts.id
+        INNER JOIN deployments dep
+          ON dep.project_id = latest_dep.project_id AND dep.finished_at = latest_dep.latest_finished_at
+        WHERE prjts.user_id = ?
+        ORDER BY dep.finished_at DESC
+      `,
       [user.id]
     );
 
