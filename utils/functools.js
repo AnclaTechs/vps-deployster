@@ -89,7 +89,7 @@ async function addLogToDeploymentRecord(deploymentId, logData) {
 }
 
 async function markDeploymentAsComplete(deploymentId, status, artifactPath) {
-  const timestamp = moment().format("yyyy-MM-dd HH:mm:ss");
+  const timestamp = moment().format("YYYY-MM-DD HH:mm:ss");
   const currentDeploymentRecord = await getSingleRow(
     "SELECT * FROM deployments WHERE id = ?",
     [deploymentId]

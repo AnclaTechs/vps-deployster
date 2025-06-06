@@ -69,7 +69,7 @@ app.post("/deploy", async (req, res) => {
   let deploymentRecord;
   let user;
   let projectInView;
-  const deploymentTimestamp = moment().format("yyyy-MM-dd HH:mm:ss");
+  const deploymentTimestamp = moment().format("YYYY-MM-DD HH:mm:ss");
   const job_id = Date.now().toString();
   const { cd, commands, commit_hash } = req.body;
 
