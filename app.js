@@ -17,6 +17,7 @@ const { RecordDoesNotExist } = require("./database/error");
 const {
   addLogToDeploymentRecord,
   markDeploymentAsComplete,
+  getProjectPort,
 } = require("./utils/functools");
 const { DEPLOYMENT_STATUS } = require("./utils/constants");
 
