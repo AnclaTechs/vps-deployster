@@ -205,12 +205,14 @@ async function getAllProjects(req, res) {
       [user.id]
     );
 
-    // projects = await Promise.all(
-    //   projects.map(async (projectData) => ({
-    //     ...projectData,
-    //     status: await isPortActive(projectData.tcp_port),
-    //   }))
-    // );
+    console.log({ projects });
+
+    projects = await Promise.all(
+      projects.map(async (projectData) => ({
+        ...projectData,
+        status: await isPortActive(projectData.tcp_port),
+      }))
+    );
 
     return res.json({
       status: true,
