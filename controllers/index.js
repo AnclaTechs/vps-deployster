@@ -7,9 +7,13 @@ const { getSingleRow } = require("../database/functions");
 const {
   createUserValidationSchema,
   loginValidationSchema,
+  updateProjectValidationSchema,
 } = require("../utils/validator");
 const redisClient = require("../redis");
-const { isPortActive } = require("../utils/functools");
+const {
+  isPortActive,
+  convertFolderNameToDocumentTitle,
+} = require("../utils/functools");
 const jwtr = new JWTR(redisClient);
 
 async function createUser(req, res) {
@@ -189,17 +193,17 @@ async function getAllProjects(req, res) {
 
     let projects = await pool.all(
       `
-        SELECT prjts.*, dep.finished_at
-        FROM projects prjts
+        SELECT prjt.*, dep.finished_at
+        FROM projects prjt
         INNER JOIN (
           SELECT project_id, MAX(finished_at) AS latest_finished_at
           FROM deployments
           GROUP BY project_id
         ) latest_dep
-          ON latest_dep.project_id = prjts.id
+          ON latest_dep.project_id = prjt.id
         INNER JOIN deployments dep
           ON dep.project_id = latest_dep.project_id AND dep.finished_at = latest_dep.latest_finished_at
-        WHERE prjts.user_id = ?
+        WHERE prjt.user_id = ?
         ORDER BY dep.finished_at DESC
       `,
       [user.id]
@@ -208,6 +212,9 @@ async function getAllProjects(req, res) {
     projects = await Promise.all(
       projects.map(async (projectData) => ({
         ...projectData,
+        name: convertFolderNameToDocumentTitle(
+          Array.from(projectData.app_local_path.split("/")).pop()
+        ),
         status: await isPortActive(projectData.tcp_port),
       }))
     );
@@ -227,10 +234,119 @@ async function getAllProjects(req, res) {
   }
 }
 
+async function getSingleProject(req, res) {
+  const user = req.user;
+  const projectId = req.params.projectId;
+
+  let projectInView = await pool.get(
+    `
+        SELECT prjt.*, dep.finished_at
+        FROM projects prjt
+        INNER JOIN (
+          SELECT project_id, MAX(finished_at) AS latest_finished_at
+          FROM deployments
+          GROUP BY project_id
+        ) latest_dep
+          ON latest_dep.project_id = prjt.id
+        INNER JOIN deployments dep
+          ON dep.project_id = latest_dep.project_id AND dep.finished_at = latest_dep.latest_finished_at
+        WHERE prjt.user_id = ? AND prjt.id = ?
+      `,
+    [user.id, projectId]
+  );
+
+  projectInView = {
+    ...projectInView,
+    current_head: String(projectInView.current_head).slice(0, 7),
+    name: convertFolderNameToDocumentTitle(
+      Array.from(projectInView.app_local_path.split("/")).pop()
+    ),
+    status: projectInView.tcp_port
+      ? await isPortActive(projectInView.tcp_port)
+      : null,
+  };
+
+  return res.json({
+    status: true,
+    message: "Project data returned successfully",
+    data: projectInView,
+  });
+}
+
+async function updateProjectDetails(req, res) {
+  const user = req.user;
+  const projectId = req.params.projectId;
+  let projectInView;
+
+  try {
+    const { error } = updateProjectValidationSchema.validate(req.body);
+    if (error) {
+      return res.status(400).json({
+        status: false,
+        message: error.details[0].message,
+      });
+    }
+
+    try {
+      projectInView = await getSingleRow(
+        `
+        SELECT id
+        FROM projects
+        WHERE user_id = ? AND id = ?
+      `,
+        [user.id, projectId]
+      );
+    } catch (error) {
+      console.log({ error });
+      return res
+        .status(403)
+        .json({ status: false, message: "Error getting project" });
+    }
+
+    const { git_url, app_url, log_paths } = req.body;
+
+    const [LOG_PATH_I, LOG_PATH_II, LOG_PATH_III] = log_paths;
+
+    await pool.run(
+      `
+      UPDATE projects 
+      SET 
+        app_url = ?, 
+        repository_url = ?,
+        log_file_i_location = ?,
+        log_file_ii_location = ?, 
+        log_file_iii_location = ?
+      WHERE id = ?
+      `,
+      [
+        app_url,
+        git_url,
+        LOG_PATH_I,
+        LOG_PATH_II,
+        LOG_PATH_III,
+        projectInView.id,
+      ]
+    );
+
+    return res.json({
+      status: true,
+      message: "Project details updated successfully",
+      data: {},
+    });
+  } catch (error) {
+    console.log({ error });
+    return res
+      .status(500)
+      .json({ status: false, message: "Internal server error" });
+  }
+}
+
 module.exports = {
   createUser,
   loginUser,
   getUser,
   logoutUser,
   getAllProjects,
+  getSingleProject,
+  updateProjectDetails,
 };

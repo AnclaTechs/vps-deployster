@@ -12,7 +12,14 @@ const loginValidationSchema = Joi.object({
   password: Joi.string().required(),
 });
 
+const updateProjectValidationSchema = Joi.object({
+  git_url: Joi.string().uri().required().allow(""),
+  app_url: Joi.string().uri().required().allow(""),
+  log_paths: Joi.array().required(),
+});
+
 module.exports = {
   createUserValidationSchema,
   loginValidationSchema,
+  updateProjectValidationSchema,
 };

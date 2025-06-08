@@ -114,9 +114,21 @@ async function markDeploymentAsComplete(deploymentId, status, artifactPath) {
   }
 }
 
+function convertFolderNameToDocumentTitle(folderName) {
+  // Replace non-alphanumeric characters with a space
+  const cleaned = folderName.replace(/[^a-zA-Z0-9]+/g, " ");
+  // Capitalize each word
+  return cleaned
+    .trim()
+    .split(" ")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
+}
+
 module.exports = {
   getProjectPort,
   isPortActive,
   addLogToDeploymentRecord,
   markDeploymentAsComplete,
+  convertFolderNameToDocumentTitle,
 };
