@@ -349,7 +349,7 @@ async function updateProjectDetails(req, res) {
 
 async function getProjectDeploymentActivities(req, res) {
   const user = req.user;
-  const projectId = parseInt(req.params.projectId);
+  const projectId = req.params.projectId;
   let projectInView;
   let currentDeployment;
 
@@ -372,10 +372,10 @@ async function getProjectDeploymentActivities(req, res) {
     }
 
     const deploymentActivityLogs = await pool.run(
-      "SELECT *, dep.commit_hash, dep.log_output, u.email FROM activity_logs actlog INNER JOIN deployments dep ON dep.id = actlog.deployment_id INNER JOIN users u ON u.id = dep.user_id WHERE actlog.project_id = ? ORDER BY actlog.id DESC"
+      "SELECT *, dep.commit_hash, dep.log_output, u.email FROM activity_logs actlog INNER JOIN deployments dep ON dep.id = actlog.deployment_id INNER JOIN users u ON u.id = dep.user_id WHERE actlog.project_id = ? ORDER BY actlog.id DESC",
+      [projectId]
     );
 
-    console.log({ projectId, projectInView, deploymentActivityLogs });
     try {
       currentDeployment = await getSingleRow(
         `SELECT * FROM deployments
