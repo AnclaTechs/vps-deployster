@@ -72,7 +72,13 @@
             <div>
               <a
                 href="#"
-                @click.prevent="showPastDeploymentLog(log?.log_output)"
+                @click.prevent="
+                  showPastDeploymentLog(
+                    log?.log_output,
+                    String(log.commit_hash).slice(0, 7),
+                    log.id
+                  )
+                "
                 >View Build Log</a
               >
               <a
@@ -107,7 +113,10 @@
           <div class="modal-content">
             <div class="modal-header">
               <h5 class="modal-title" id="deploymentLogModalLabel">
-                Build Log
+                <span class="badge rounded-pill bg-secondary">{{
+                  deploymentInViewHash
+                }}</span>
+                Build Log <small>v{{ deploymentInViewVersionId }}</small>
               </h5>
               <button
                 type="button"
@@ -121,7 +130,7 @@
               style="max-height: 60vh; overflow-y: auto; font-family: monospace"
             >
               <pre>
-              <code class="language-bash" style="padding: 0 !important;">{{ line }}
+              <code class="language-bash" style="padding: 0 !important;">{{ parsedDeploymentLog }}
                 </code>
               </pre>
             </div>
@@ -151,6 +160,8 @@ export default {
       activeLogLineCount: 0,
       pollingInterval: null,
       parsedDeploymentLog: null,
+      deploymentInViewHash: "",
+      deploymentInViewVersionId: "",
     };
   },
   mounted() {
@@ -200,8 +211,14 @@ export default {
         console.error("Error fetching logs:", error);
       }
     },
-    showPastDeploymentLog(rawLogOutput) {
+    showPastDeploymentLog(
+      rawLogOutput,
+      deploymentInViewHash,
+      deploymentInViewVersionId
+    ) {
       this.parsedDeploymentLog = rawLogOutput || "No log data available";
+      this.deploymentInViewHash = deploymentInViewHash;
+      this.deploymentInViewVersionId = deploymentInViewVersionId;
 
       const modal = new bootstrap.Modal(
         document.getElementById("deploymentLogModal")
