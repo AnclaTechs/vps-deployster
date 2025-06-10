@@ -375,6 +375,7 @@ async function getProjectDeploymentActivities(req, res) {
       "SELECT *, dep.commit_hash, dep.log_output, u.email FROM activity_logs actlog INNER JOIN deployments dep ON dep.id = actlog.deployment_id INNER JOIN users u ON u.id = dep.user_id WHERE actlog.project_id = ? ORDER BY actlog.id DESC"
     );
 
+    console.log({ projectId, deploymentActivityLogs });
     try {
       currentDeployment = await getSingleRow(
         `SELECT * FROM deployments
