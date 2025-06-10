@@ -120,7 +120,7 @@ async function markDeploymentAsComplete(
 
       // CREATE ACTIVITY LOG FOR DEPLOYMENT
       await pool.run(
-        "INSERT INTO activity_logs (project_id, deployment_id, action, message) VALUES(?, ?, ?, ?)",
+        "INSERT INTO activity_logs (project_id, deployment_id, action, message, created_at) VALUES(?, ?, ?, ?, ?)",
         [
           currentDeploymentRecord.project_id,
           currentDeploymentRecord.id,
@@ -128,6 +128,7 @@ async function markDeploymentAsComplete(
           status == DEPLOYMENT_STATUS.COMPLETED
             ? "Build succeeded"
             : "Build failed",
+          moment().format("YYYY-MM-DD HH:mm:ss"),
         ]
       );
     } else {

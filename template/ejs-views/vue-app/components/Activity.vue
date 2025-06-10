@@ -47,14 +47,36 @@
         >
           <span class="text-muted">{{ formatTimestamp(log.created_at) }}</span
           ><br />
-          <span>{{ log.user }}: {{ log.message }}</span>
+          <span
+            ><span class="fw-bold text-muted">{{ log.email }}</span
+            >:
+            <span
+              :style="{
+                color: log.message?.toLowerCase().includes('succeeded')
+                  ? '#198754'
+                  : '#DC3545',
+                fontWeight: 600,
+              }"
+              >{{ log.message }}</span
+            ></span
+          >
           <div
             class="d-flex flex-row justify-content-between align-items-center mt-1"
           >
-            <span>{{ log.commit_hash }} v{{ log.id }}</span>
+            <span
+              ><code class="commit-hash">{{
+                String(log.commit_hash).slice(0, 7)
+              }}</code>
+              v{{ log.id }}</span
+            >
             <div>
               <a href="#">View Build Log</a>
-              <a href="#" class="ms-2">Roll back here</a>
+              <a
+                v-if="log.message?.toLowerCase().includes('succeeded')"
+                href="#"
+                class="ms-2"
+                >Roll back here</a
+              >
             </div>
           </div>
         </div>
@@ -155,5 +177,11 @@ a {
   cursor: pointer;
   text-decoration: underline;
   color: var(--bs-primary);
+}
+.commit-hash {
+  color: rgb(71, 83, 102);
+  background-color: rgb(247, 248, 251);
+  box-shadow: rgba(0, 0, 0, 0.1) 0px 0px 0px 1px inset;
+  border-radius: 4px;
 }
 </style>
