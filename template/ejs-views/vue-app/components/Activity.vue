@@ -21,7 +21,7 @@
             font-size: 0.875rem;
           "
         >
-          <code class="language-accesslog" style="padding: 0 !important; background: none;">{{ activeLogContent }}</code>
+          <code class="language-bash" style="padding: 0 !important; background: none;">{{ activeLogContent }}</code>
         </pre>
 
         <div

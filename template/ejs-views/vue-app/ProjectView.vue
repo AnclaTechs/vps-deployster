@@ -312,10 +312,14 @@
 
         <!-- More Settings Tab -->
         <div v-if="activeSettingsTab === 'More Settings'" class="d-grid gap-2">
-          <button class="btn btn-outline-danger" @click="killServer">
+          <button disabled class="btn btn-outline-danger" @click="killServer">
             Kill Server
           </button>
-          <button class="btn btn-outline-primary" @click="redeployServer">
+          <button
+            disabled
+            class="btn btn-outline-primary"
+            @click="redeployServer"
+          >
             Redeploy
           </button>
         </div>
