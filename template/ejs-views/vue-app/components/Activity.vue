@@ -70,7 +70,11 @@
               v{{ log.id }}</span
             >
             <div>
-              <a href="#">View Build Log</a>
+              <a
+                href="#"
+                @click.prevent="showPastDeploymentLog(log?.log_output)"
+                >View Build Log</a
+              >
               <a
                 v-if="log.message?.toLowerCase().includes('succeeded')"
                 href="#"
@@ -89,6 +93,42 @@
         </div>
       </div>
     </div>
+
+    <section>
+      <!-- Previous Deployment Log Modal -->
+      <div
+        class="modal fade"
+        id="deploymentLogModal"
+        tabindex="-1"
+        aria-labelledby="deploymentLogModalLabel"
+        aria-hidden="true"
+      >
+        <div class="modal-dialog modal-lg">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title" id="deploymentLogModalLabel">
+                Build Log
+              </h5>
+              <button
+                type="button"
+                class="btn-close"
+                data-bs-dismiss="modal"
+                aria-label="Close"
+              ></button>
+            </div>
+            <div
+              class="modal-body bg-light border rounded"
+              style="max-height: 60vh; overflow-y: auto; font-family: monospace"
+            >
+              <pre>
+              <code class="language-bash" style="padding: 0 !important;">{{ line }}
+                </code>
+              </pre>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
   </div>
 </template>
 
@@ -110,6 +150,7 @@ export default {
       activeLogContent: "",
       activeLogLineCount: 0,
       pollingInterval: null,
+      parsedDeploymentLog: null,
     };
   },
   mounted() {
@@ -158,6 +199,14 @@ export default {
       } catch (error) {
         console.error("Error fetching logs:", error);
       }
+    },
+    showPastDeploymentLog(rawLogOutput) {
+      this.parsedDeploymentLog = rawLogOutput || "No log data available";
+
+      const modal = new bootstrap.Modal(
+        document.getElementById("deploymentLogModal")
+      );
+      modal.show();
     },
     formatTimestamp(ts) {
       return new Date(ts).toLocaleString();
