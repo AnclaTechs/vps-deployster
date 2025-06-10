@@ -349,7 +349,7 @@ async function updateProjectDetails(req, res) {
 
 async function getProjectDeploymentActivities(req, res) {
   const user = req.user;
-  const projectId = req.params.projectId;
+  const projectId = parseInt(req.params.projectId);
   let projectInView;
   let currentDeployment;
 
