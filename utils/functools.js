@@ -94,7 +94,8 @@ async function markDeploymentAsComplete(
   deploymentId,
   status,
   artifactPath,
-  deploymentLockKey
+  deploymentLockKey,
+  options = { createActivityLog: true }
 ) {
   try {
     const timestamp = moment().format("YYYY-MM-DD HH:mm:ss");
@@ -119,18 +120,20 @@ async function markDeploymentAsComplete(
       }
 
       // CREATE ACTIVITY LOG FOR DEPLOYMENT
-      await pool.run(
-        "INSERT INTO activity_logs (project_id, deployment_id, action, message, created_at) VALUES(?, ?, ?, ?, ?)",
-        [
-          currentDeploymentRecord.project_id,
-          currentDeploymentRecord.id,
-          currentDeploymentRecord.action,
-          status == DEPLOYMENT_STATUS.COMPLETED
-            ? "Build succeeded"
-            : "Build failed",
-          moment().format("YYYY-MM-DD HH:mm:ss"),
-        ]
-      );
+      if (options.createActivityLog) {
+        await pool.run(
+          "INSERT INTO activity_logs (project_id, deployment_id, action, message, created_at) VALUES(?, ?, ?, ?, ?)",
+          [
+            currentDeploymentRecord.project_id,
+            currentDeploymentRecord.id,
+            currentDeploymentRecord.action,
+            status == DEPLOYMENT_STATUS.COMPLETED
+              ? "Build succeeded"
+              : "Build failed",
+            moment().format("YYYY-MM-DD HH:mm:ss"),
+          ]
+        );
+      }
     } else {
       throw Error("Invalid deployment status");
     }

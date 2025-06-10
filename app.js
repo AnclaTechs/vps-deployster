@@ -261,7 +261,8 @@ app.post("/deploy", async (req, res) => {
         deploymentRecord.id,
         DEPLOYMENT_STATUS.COMPLETED,
         artifactPath,
-        deploymentLockKey
+        deploymentLockKey,
+        { createActivityLog: false } //skip Log regeneration
       );
     } catch (err) {
       var newLogMessage = `[WARN] Artifact generation failed: ${err.message}\n`;
