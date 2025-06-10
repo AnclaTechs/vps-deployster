@@ -48,17 +48,19 @@
               :href="project.repository_url"
               target="_blank"
               :title="
-                project.repository_url.length > 35 ? project.repository_url : ''
+                project.repository_url?.length > 35
+                  ? project.repository_url
+                  : ''
               "
               v-tooltip="
-                project.repository_url.length > 35
+                project.repository_url?.length > 35
                   ? project.repository_url
                   : null
               "
               class="text-decoration-none"
             >
               {{
-                project.repository_url.length > 35
+                project.repository_url?.length > 35
                   ? project.repository_url.slice(0, 35) + "..."
                   : project.repository_url
               }}
@@ -81,12 +83,12 @@
             <a
               :href="project.app_url"
               target="_blank"
-              :title="project.app_url.length > 35 ? project.app_url : ''"
-              v-tooltip="project.app_url.length > 35 ? project.app_url : null"
+              :title="project.app_url?.length > 35 ? project.app_url : ''"
+              v-tooltip="project.app_url?.length > 35 ? project.app_url : null"
               class="text-decoration-none"
             >
               {{
-                project.app_url.length > 35
+                project.app_url?.length > 35
                   ? project.app_url.slice(0, 35) + "..."
                   : project.app_url
               }}
