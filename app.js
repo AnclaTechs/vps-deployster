@@ -69,6 +69,7 @@ app.post("/deploy", async (req, res) => {
   let deploymentRecord;
   let user;
   let projectInView;
+  let deploymentLockKey;
   const deploymentTimestamp = moment().format("YYYY-MM-DD HH:mm:ss");
   const job_id = Date.now().toString();
   const { cd, commands, commit_hash } = req.body;
@@ -117,7 +118,7 @@ app.post("/deploy", async (req, res) => {
   try {
     /**
      * Default to first user in DB
-     * @TODO - Create a Group system that manages this beeter
+     * @TODO - Create a Group system that manages this better
      *  */
     user = await getSingleRow("SELECT * FROM users ORDER BY id DESC LIMIT 1");
 
@@ -126,6 +127,24 @@ app.post("/deploy", async (req, res) => {
         "SELECT * FROM projects WHERE app_local_path = ?",
         [cd]
       );
+      try {
+        deploymentLockKey = `lock:deploy:${projectInView.id}`;
+        const acquired = await redisClient.set(
+          deploymentLockKey,
+          "locked",
+          "NX",
+          "EX",
+          600 // 10 mins
+        );
+
+        if (!acquired) {
+          return res.status(409).json({
+            error: "Project has another deployment activity in progress.",
+          });
+        }
+      } catch (error) {
+        throw Error("Error getting deployment lock key");
+      }
       await pool.run(
         "UPDATE projects SET current_head = ?, tcp_port = ? WHERE id = ?",
         [commit_hash, ACTIVE_PROJECT_DEPLOYSTER_PORT, projectInView.id]
@@ -189,7 +208,8 @@ app.post("/deploy", async (req, res) => {
           await markDeploymentAsComplete(
             deploymentRecord.id,
             DEPLOYMENT_STATUS.FAILED,
-            null
+            null,
+            deploymentLockKey
           );
         }
         return;
@@ -199,7 +219,8 @@ app.post("/deploy", async (req, res) => {
     await markDeploymentAsComplete(
       deploymentRecord.id,
       DEPLOYMENT_STATUS.COMPLETED,
-      null
+      null,
+      null // HOLD ON SUCCESSFUL LOCK-KEY for a moment. It's passed a little later
     );
 
     // STORE ARTIFACT
@@ -239,7 +260,8 @@ app.post("/deploy", async (req, res) => {
       await markDeploymentAsComplete(
         deploymentRecord.id,
         DEPLOYMENT_STATUS.COMPLETED,
-        artifactPath
+        artifactPath,
+        deploymentLockKey
       );
     } catch (err) {
       var newLogMessage = `[WARN] Artifact generation failed: ${err.message}\n`;

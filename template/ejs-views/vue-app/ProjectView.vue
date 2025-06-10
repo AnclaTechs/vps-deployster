@@ -131,24 +131,28 @@
         </ul>
 
         <div
-          v-if="projectLogIsLoading"
+          v-if="projectLogIsLoading && projectActivityIsLoading"
           class="d-flex justify-content-center align-items-center"
         >
           <span class="fetching-log-loader">Fetching Logs</span>
         </div>
         <div v-else>
           <div v-if="tab === 'activity'">
-            <ActivityFeed :events="project.activity" />
+            <ActivityFeed
+              :projectId="this.project.id"
+              :events="projectDeploymentActivities"
+            />
           </div>
 
           <div v-else>
             <div class="mb-3">
-              <label>Select Log File:</label>
-              <select class="form-select" v-model="selectedLog">
+              <label class="fw-bold">Select Log File:</label>
+              <select class="form-select mt-3" v-model="selectedLog">
+                <option value="" disabled selected>--- Select ---</option>
                 <option
-                  v-for="log in project.logs"
+                  v-for="log in projectLogPathsObjectifiedArray"
                   :key="log.name"
-                  :value="log.app_local_path"
+                  :value="log.path"
                 >
                   {{ log.name }}
                 </option>
@@ -157,9 +161,28 @@
 
             <div
               class="log-view bg-dark text-light p-3 rounded"
-              style="min-height: 300px; overflow: auto"
+              style="min-height: 300px; overflow: auto; max-height: 500px"
+              ref="logBoxContainer"
+              @scroll.passive="handleScroll"
             >
-              <pre>{{ logs[selectedLog] || "Loading..." }}</pre>
+              <div
+                v-if="logFileStreams[selectedLog]?.loadingOlder"
+                class="loading-older-log-indicator"
+              >
+                <hr />
+                <div style="text-align: center; font-size: 12px; color: gray">
+                  Loading older logs...
+                </div>
+                <hr />
+              </div>
+              <pre v-if="projectLogIsLoading" class="log-content">
+                <code class="language-bash" style="padding: 0 !important; background: none;">[INFO] Fetching log {{ `${selectedLog ? `${selectedLog}...`: "-- Select Log File"}` }}</code>
+              </pre>
+              <pre v-else class="log-content">
+                <code class="language-bash" style="padding: 0 !important; background: none;">
+                {{ logFileStreams[selectedLog]?.data.join("\n") }}
+                </code>
+              </pre>
             </div>
           </div>
         </div>
@@ -255,7 +278,7 @@
               <button
                 class="btn btn-outline-danger"
                 type="button"
-                @click="removeLog(index)"
+                @click="removeLogPath(index)"
                 :disabled="logPaths.length <= 1"
               >
                 &times;
@@ -263,7 +286,7 @@
             </div>
             <button
               class="btn btn-outline-secondary btn-sm"
-              @click="addLog"
+              @click="addNewLogPath"
               :disabled="logPaths.length >= 3"
             >
               + Add Log Path
@@ -319,13 +342,21 @@ export default {
       gitUrl: "",
       appUrl: "",
       logPaths: [""],
+      logFileStreams: {
+        // [path]: {
+        //   data: [],
+        //   lastLineIndex: 0,
+        //   scrollToBottom: true
+        // }
+      },
+      logFileStreamPollingInterval: null,
+      logFileStreamAtBottom: true,
+      selectedLog: null,
       updatingProjectSettings: false,
       tab: "activity",
-      selectedLog: null,
       projectDataIsLoading: true,
       projectActivityIsLoading: true,
       projectLogIsLoading: true,
-      logs: {},
       project: {
         name: "",
         app_local_path: "",
@@ -334,33 +365,52 @@ export default {
         current_head: "",
         tcp_port: "",
         app_url: "",
-        logs: [
-          { name: "stdout.log", path: "/logs/stdout.log" },
-          { name: "stderr.log", path: "/logs/stderr.log" },
-        ],
-        activity: [
-          { time: "2025-05-25", action: "Deployed new build." },
-          { time: "2025-05-22", action: "Restarted service." },
-        ],
       },
+      projectDeploymentActivities: [],
     };
+  },
+  computed: {
+    projectLogPathsObjectifiedArray() {
+      return this.logPaths.map((path) => {
+        const segments = path.split("/");
+        return {
+          name: segments[segments.length - 1],
+          path,
+        };
+      });
+    },
   },
   watch: {
     selectedLog(newPath) {
-      this.fetchLog(newPath);
+      if (newPath) {
+        this.fetchLog(newPath);
+        this.startLogStreamPolling();
+      }
     },
   },
   mounted() {
-    if (this.project.logs.length) {
-      this.selectedLog = this.project.logs[0].app_local_path;
+    if (this.projectLogPathsObjectifiedArray.length) {
+      this.selectedLog = this.projectLogPathsObjectifiedArray[0].name;
     }
+
     this.getProjectData();
+    this.getProjectActivities();
+
+    this.activityInterval = setInterval(() => {
+      this.getProjectActivities();
+    }, 10000); // 10 seconds
+  },
+  beforeUnmount() {
+    if (this.activityInterval) {
+      clearInterval(this.activityInterval);
+    }
+    clearInterval(this.pollingInterval);
   },
   methods: {
     getProjectData() {
       axios
         .get(
-          `${this.$BACKEND_BASE_URL}/get-project/${this.id}`,
+          `${this.$BACKEND_BASE_URL}/project/${this.id}`,
           this.$store.state.headers
         )
         .then((res) => {
@@ -369,20 +419,36 @@ export default {
           this.gitUrl = projectData.repository_url || "";
           this.appUrl = projectData.app_url || "";
           this.logPaths = Array.from(
-            new Set([
-              projectData.log_file_i_location || "",
-              projectData.log_file_ii_location || "",
-              projectData.log_file_iii_location || "",
-            ])
+            new Set(
+              [
+                projectData.log_file_i_location || "",
+                projectData.log_file_ii_location || "",
+                projectData.log_file_iii_location || "",
+              ].filter(Boolean)
+            )
           );
           this.projectDataIsLoading = false;
         });
+    },
+    getProjectActivities() {
+      if (this.tab === "activity") {
+        axios
+          .get(
+            `${this.$BACKEND_BASE_URL}/project/${this.id}/deployment-activities`,
+            this.$store.state.headers
+          )
+          .then((res) => {
+            const data = res.data.data;
+            this.projectDeploymentActivities = data;
+            this.projectActivityIsLoading = false;
+          });
+      }
     },
     updateProjectProfile() {
       this.updatingProjectSettings = true;
       axios
         .patch(
-          `${this.$BACKEND_BASE_URL}/get-project/${this.id}`,
+          `${this.$BACKEND_BASE_URL}/project/${this.id}`,
           {
             git_url: this.gitUrl,
             app_url: this.appUrl,
@@ -410,21 +476,185 @@ export default {
     switchSettingsTab(tab) {
       this.activeSettingsTab = tab;
     },
-    fetchLog(path) {
-      // Simulate log fetch
-      this.logs[
-        path
-      ] = `Log from ${path}...\n[INFO] Application started...\n[INFO] Listening on port ${this.project.tcp_port}`;
-    },
-    addLog() {
+    addNewLogPath() {
       if (this.logPaths.length < 3) {
         this.logPaths.push("");
       }
     },
-    removeLog(index) {
+    removeLogPath(index) {
       if (this.logPaths.length > 1) {
         this.logPaths.splice(index, 1);
       }
+    },
+    fetchLog(path) {
+      if (this.logFileStreams[path]) {
+        Vue.nextTick(() => {
+          this.scrollLogFileStreamContainerToBottom();
+          this.updateHighlight();
+        });
+      } else {
+        this.fetchInitialLogs(path);
+      }
+    },
+    async fetchInitialLogs(path) {
+      axios
+        .get(
+          `${this.$BACKEND_BASE_URL}/stream-log-file?path=${encodeURIComponent(
+            path
+          )}&fromLine=-1`,
+          this.$store.state.headers
+        )
+        .then((res) => {
+          const data = res.data.data;
+          this.logFileStreams[path] = {
+            data: data.lines,
+            lastLineIndex: data.nextLineIndex,
+          };
+
+          this.projectLogIsLoading = false;
+
+          Vue.nextTick(() => {
+            this.scrollLogFileStreamContainerToBottom();
+            this.updateHighlight();
+          });
+        })
+        .catch((err) => {
+          toastr.error(
+            err.response?.data?.message || "Failed to fetch initial logs"
+          );
+          console.error("Failed to fetch initial logs:", err);
+        });
+    },
+    async fetchNewLogs(path) {
+      if (this.tab === "logs") {
+        if (!this.logFileStreams[path]) return;
+
+        const stream = this.logFileStreams[path];
+
+        axios
+          .get(
+            `${
+              this.$BACKEND_BASE_URL
+            }/stream-log-file?path=${encodeURIComponent(path)}&fromLine=${
+              stream.lastLineIndex
+            }`,
+            this.$store.state.headers
+          )
+          .then((res) => {
+            const data = res.data.data;
+            if (data.lines.length > 0) {
+              stream.data.push(...data.lines);
+              stream.lastLineIndex = data.nextLineIndex;
+
+              // Keep recent N lines (optional memory cap)
+              stream.data = stream.data.slice(-10000);
+
+              if (this.atBottom && path === this.selectedLog) {
+                Vue.nextTick(() => this.scrollLogFileStreamContainerToBottom());
+              }
+              this.updateHighlight();
+            }
+          })
+          .catch((err) => {
+            toastr.error(err.response?.data?.message || "Polling failed");
+            console.error("Polling failed:", err);
+          });
+      }
+    },
+    async fetchOlderLogs(path) {
+      const stream = this.logFileStreams[path];
+      if (
+        !stream ||
+        stream.loadingOlder ||
+        stream.data.length >= stream.totalLines
+      )
+        return;
+
+      stream.loadingOlder = true;
+
+      const from = Math.max(
+        stream.lastLineIndex - stream.data.length - 1000,
+        0
+      );
+      const limit = 1000;
+
+      // Preserve scroll height before update
+      const container = this.$refs.logBoxContainer;
+      const beforeHeight = container.scrollHeight;
+
+      axios
+        .get(
+          `${this.$BACKEND_BASE_URL}/stream-log-file?path=${encodeURIComponent(
+            path
+          )}&fromLine=${from}&limit=${limit}`,
+          this.$store.state.headers
+        )
+        .then((res) => {
+          const data = res.data.data;
+          if (data.lines.length > 0) {
+            stream.data = [...data.lines, ...stream.data];
+            stream.loadingOlder = false;
+            //stream.data = stream.data.slice(-10000);
+
+            Vue.nextTick(() => {
+              // Adjust scroll position to maintain view after prepending
+              const afterHeight = container.scrollHeight;
+              container.scrollTop = afterHeight - beforeHeight;
+            });
+            this.updateHighlight();
+          }
+        })
+        .catch((err) => {
+          toastr.error(
+            err.response?.data?.message || "Older logs fetch failed"
+          );
+          console.error("Older logs fetch failed:", err);
+        });
+    },
+    startLogStreamPolling() {
+      this.pollingInterval = setInterval(() => {
+        if (this.selectedLog) {
+          const container = this.$refs.logBoxContainer;
+          const isAtBottom =
+            container.scrollTop + container.clientHeight >=
+            container.scrollHeight - 50; // 50px THRESHHOLD
+
+          if (!isAtBottom) {
+            return; // Do not poll new log if user has scrolled up
+          }
+          this.fetchNewLogs(this.selectedLog);
+        }
+      }, 3000);
+    },
+
+    scrollLogFileStreamContainerToBottom() {
+      const container = this.$refs.logBoxContainer;
+      if (container) {
+        container.scrollTo({
+          top: container.scrollHeight,
+          behavior: "smooth",
+        });
+        this.atBottom = true;
+      }
+    },
+
+    handleScroll() {
+      const el = this.$refs.logBoxContainer;
+      if (!el) return;
+
+      if (el.scrollTop < 30 && this.selectedLog) {
+        this.fetchOlderLogs(this.selectedLog);
+      }
+
+      const nearBottom =
+        Math.abs(el.scrollHeight - el.scrollTop - el.clientHeight) < 10;
+      this.atBottom = nearBottom;
+    },
+    updateHighlight() {
+      document.querySelectorAll("[data-highlighted]").forEach((el) => {
+        delete el.dataset.highlighted;
+      });
+      hljs.highlightAll();
     },
     killServer() {
       if (confirm("Are you sure you want to kill the server?")) {
@@ -441,6 +671,19 @@ export default {
 </script>
 
 <style scoped>
+.log-content {
+  display: flex;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  font-family: monospace;
+  font-size: 0.875rem;
+}
+
+.loading-older-log-indicator {
+  padding: 6px;
+  background-color: #f9f9f9;
+}
+
 .cursor-pointer {
   cursor: pointer;
 }

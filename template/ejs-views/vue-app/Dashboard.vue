@@ -219,10 +219,7 @@ module.exports = {
   methods: {
     getAnalytics() {
       axios
-        .get(
-          `${this.$BACKEND_BASE_URL}/get-projects`,
-          this.$store.state.headers
-        )
+        .get(`${this.$BACKEND_BASE_URL}/projects`, this.$store.state.headers)
         .then((res) => {
           this.dashboardData = res.data;
           this.dashboardDataIsLoading = false;

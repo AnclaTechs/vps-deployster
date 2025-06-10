@@ -1,3 +1,4 @@
+const os = require("os");
 const fs = require("fs");
 const moment = require("moment");
 const path = require("path");
@@ -6,6 +7,7 @@ const pool = require("../database/index");
 const { exec, execSync } = require("child_process");
 const { DEPLOYMENT_STATUS } = require("./constants");
 const { getSingleRow } = require("../database/functions");
+const redisClient = require("../redis");
 
 /**
  * Tries to get the port number from a project's .env file or falls back to detecting it from lsof
@@ -88,29 +90,55 @@ async function addLogToDeploymentRecord(deploymentId, logData) {
   ]);
 }
 
-async function markDeploymentAsComplete(deploymentId, status, artifactPath) {
-  const timestamp = moment().format("YYYY-MM-DD HH:mm:ss");
-  const currentDeploymentRecord = await getSingleRow(
-    "SELECT * FROM deployments WHERE id = ?",
-    [deploymentId]
-  );
+async function markDeploymentAsComplete(
+  deploymentId,
+  status,
+  artifactPath,
+  deploymentLockKey
+) {
+  try {
+    const timestamp = moment().format("YYYY-MM-DD HH:mm:ss");
+    const currentDeploymentRecord = await getSingleRow(
+      "SELECT * FROM deployments WHERE id = ?",
+      [deploymentId]
+    );
 
-  if (
-    [DEPLOYMENT_STATUS.FAILED, DEPLOYMENT_STATUS.COMPLETED].includes(status)
-  ) {
-    if (artifactPath) {
+    if (
+      [DEPLOYMENT_STATUS.FAILED, DEPLOYMENT_STATUS.COMPLETED].includes(status)
+    ) {
+      if (artifactPath) {
+        await pool.run(
+          "UPDATE deployments SET status = ?, finished_at = ?, artifact_path = ? WHERE id = ?",
+          [status, timestamp, artifactPath, currentDeploymentRecord.id]
+        );
+      } else {
+        await pool.run(
+          "UPDATE deployments SET status = ?, finished_at = ? WHERE id = ?",
+          [status, timestamp, deploymentId]
+        );
+      }
+
+      // CREATE ACTIVITY LOG FOR DEPLOYMENT
       await pool.run(
-        "UPDATE deployments SET status = ?, finished_at = ?, artifact_path = ? WHERE id = ?",
-        [status, timestamp, artifactPath, currentDeploymentRecord.id]
+        "INSERT INTO activity_logs (project_id, deployment_id, action, message) VALUES(?, ?, ?, ?)",
+        [
+          currentDeploymentRecord.project_id,
+          currentDeploymentRecord.id,
+          currentDeploymentRecord.action,
+          status == DEPLOYMENT_STATUS.COMPLETED
+            ? "Build succeeded"
+            : "Build failed",
+        ]
       );
     } else {
-      await pool.run(
-        "UPDATE deployments SET status = ?, finished_at = ? WHERE id = ?",
-        [status, timestamp, deploymentId]
-      );
+      throw Error("Invalid deployment status");
     }
-  } else {
-    throw Error("Invalid deployment status");
+  } catch (error) {
+    console.log("Error marking deployment as complete", error);
+  } finally {
+    if (deploymentLockKey) {
+      await redisClient.del(deploymentLockKey);
+    }
   }
 }
 
@@ -125,10 +153,62 @@ function convertFolderNameToDocumentTitle(folderName) {
     .join(" ");
 }
 
+/**
+ * Wrapper function around native tail terminal method
+ * @param {String} path
+ * @param {Number} n
+ * @returns {Array}
+ */
+async function getLastNLinesFromFile(path, n = 1000) {
+  return new Promise((resolve, reject) => {
+    exec(`tail -n ${n} "${path}"`, (err, stdout, stderr) => {
+      if (err) return reject(err);
+      resolve(stdout.split("\n"));
+    });
+  });
+}
+
+/**
+ *
+ * @param {String} path
+ * @param {Number} fromLine
+ * @param {Number} limit
+ * @returns {Promise<Array>}
+ */
+function getLogContentFromFile(path, fromLine = 0, limit = 1000) {
+  return new Promise((resolve, reject) => {
+    const cmd = `tail -n +${fromLine + 1} "${path}" | head -n ${limit}`;
+    exec(cmd, (err, stdout, stderr) => {
+      if (err) return reject(err);
+      resolve(stdout.split("\n"));
+    });
+  });
+}
+
+function getTotalLinesFromFile(path) {
+  return new Promise((resolve, reject) => {
+    exec(`wc -l < "${path}"`, (err, stdout) => {
+      if (err) return reject(err);
+      resolve(parseInt(stdout.trim(), 10));
+    });
+  });
+}
+
+function expandTilde(filePath) {
+  if (filePath.startsWith("~")) {
+    return path.join(os.homedir(), filePath.slice(1));
+  }
+  return filePath;
+}
+
 module.exports = {
   getProjectPort,
   isPortActive,
   addLogToDeploymentRecord,
   markDeploymentAsComplete,
   convertFolderNameToDocumentTitle,
+  getLastNLinesFromFile,
+  getLogContentFromFile,
+  getTotalLinesFromFile,
+  expandTilde,
 };

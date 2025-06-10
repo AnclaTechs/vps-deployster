@@ -4,22 +4,21 @@ datasource db {
 }
 
 model User {
-    id           Int           @id @default(autoincrement())
-    username     String        @unique
-    email        String
-    password     String
-    created_at   DateTime      @default(now())
-    updated_at   DateTime?
-    deployments  Deployment[]
-    activityLogs ActivityLog[]
-    projects     Project[]
+    id          Int          @id @default(autoincrement())
+    username    String       @unique
+    email       String
+    password    String
+    created_at  DateTime     @default(now())
+    updated_at  DateTime?
+    deployments Deployment[]
+    projects    Project[]
 
     @@map("users")
 }
 
 model Project {
-    id                    Int          @id @default(autoincrement())
-    user                  User         @relation(fields: [user_id], references: [id])
+    id                    Int           @id @default(autoincrement())
+    user                  User          @relation(fields: [user_id], references: [id])
     user_id               Int
     current_head          String?
     app_local_path        String?
@@ -30,6 +29,7 @@ model Project {
     log_file_ii_location  String?
     log_file_iii_location String?
     deployments           Deployment[]
+    activityLogs          ActivityLog[]
 
     @@map("projects")
 }
@@ -55,12 +55,12 @@ model Deployment {
 
 model ActivityLog {
     id            Int         @id @default(autoincrement())
-    user          User?       @relation(fields: [user_id], references: [id])
-    user_id       Int?
+    project       Project     @relation(fields: [project_id], references: [id])
+    project_id    Int
     deployment    Deployment? @relation(fields: [deployment_id], references: [id])
     deployment_id Int?
     action        String // DEPLOY or ROLLBACK
-    message       String?
+    message       String
     created_at    DateTime    @default(now())
 
     @@map("activity_logs")
