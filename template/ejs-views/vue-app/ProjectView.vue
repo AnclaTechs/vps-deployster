@@ -621,9 +621,12 @@ export default {
       this.pollingInterval = setInterval(() => {
         if (this.selectedLog) {
           const container = this.$refs.logBoxContainer;
-          const isAtBottom =
-            container.scrollTop + container.clientHeight >=
-            container.scrollHeight - 50; // 50px THRESHHOLD
+          let isAtBottom;
+          if (container) {
+            isAtBottom =
+              container.scrollTop + container.clientHeight >=
+              container.scrollHeight - 50; // 50px THRESHHOLD
+          }
 
           if (!isAtBottom) {
             return; // Do not poll new log if user has scrolled up
