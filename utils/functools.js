@@ -177,7 +177,7 @@ async function getLastNLinesFromFile(path, n = 1000) {
  * @param {String} path
  * @param {Number} fromLine
  * @param {Number} limit
- * @returns {Promise<Array>}
+ * @returns {Promise}
  */
 function getLogContentFromFile(path, fromLine = 0, limit = 1000) {
   return new Promise((resolve, reject) => {
@@ -205,6 +205,99 @@ function expandTilde(filePath) {
   return filePath;
 }
 
+/**
+ * Extracts the program name from a supervisor configuration content.
+ * @param {string} confContent - The content of the supervisor configuration file.
+ * @returns {string|null} The extracted program name, or null if no program section is found.
+ */
+function _getProgramNameFromConf(confContent) {
+  const match = confContent.match(/\[program:([^\]]+)\]/);
+  return match ? match[1].trim() : null;
+}
+
+/**
+ * Checks the validity of a deployster.conf file in the current working directory.
+ * Validates if the file exists and if the program name in the configuration
+ * matches the current folder name.
+ * @param {String} project_path
+ * @returns {Object} An object containing:
+ *  - status {boolean}: True if the configuration is valid, false otherwise.
+ *  - message {string}: A message describing the result of the validation.
+ */
+function checkDeploysterConf(project_path) {
+  //const cwd = process.cwd();
+  const confPath = path.join(project_path, "deployster.conf");
+
+  if (!fs.existsSync(confPath)) {
+    return {
+      status: false,
+      message: `deployster.conf not found in ${project_path}`,
+    };
+  }
+
+  const confContent = fs.readFileSync(confPath, "utf8");
+  const programName = _getProgramNameFromConf(confContent);
+
+  if (!programName) {
+    return {
+      status: false,
+      message: `Could not find a [program:<name>] section in deployster.conf`,
+    };
+  }
+
+  const folderName = path.basename(project_path);
+
+  if (programName === folderName) {
+    return {
+      status: true,
+      message: `Config is valid: [program:${programName}] matches folder name "${folderName}".`,
+    };
+  } else {
+    return {
+      status: false,
+      message: `Mismatch: [program:${programName}] ≠ folder name "${folderName}".`,
+    };
+  }
+}
+
+async function handleServerSpinOrKillAction(projectPath, actionType) {
+  const conf = checkDeploysterConf(projectPath);
+  if (!conf.status) {
+    return conf;
+  }
+
+  let command;
+  if (actionType === "redeploy") {
+    command = `supervisorctl restart ${programName}`;
+  } else if (actionType === "kill") {
+    command = `supervisorctl stop ${programName}`;
+  } else {
+    return {
+      status: false,
+      message: 'Invalid action type. Use "redeploy" or "kill".',
+    };
+  }
+
+  try {
+    const output = await runShell(command);
+    return {
+      status: true,
+      message: output || `${actionType} executed on ${programName}`,
+    };
+  } catch (err) {
+    return { status: false, message: `Failed to run "${command}": ${err}` };
+  }
+}
+
+async function runShell(cmd) {
+  return new Promise((resolve, reject) => {
+    exec(cmd, { maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
+      if (err) return reject(stderr || err.message);
+      resolve(stdout);
+    });
+  });
+}
+
 module.exports = {
   getProjectPort,
   isPortActive,
@@ -215,4 +308,7 @@ module.exports = {
   getLogContentFromFile,
   getTotalLinesFromFile,
   expandTilde,
+  checkDeploysterConf,
+  runShell,
+  handleServerSpinOrKillAction,
 };

@@ -198,9 +198,6 @@ const { loadModule } = window["vue3-sfc-loader"];
 
 module.exports = {
   components: {
-    sidebar: defineAsyncComponent(() =>
-      loadModule("/vue/components/Sidebar.vue", window.$httpLoaderOption)
-    ),
     headerx: defineAsyncComponent(() =>
       loadModule("/vue/components/Header.vue", window.$httpLoaderOption)
     ),

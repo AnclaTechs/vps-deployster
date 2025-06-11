@@ -18,6 +18,7 @@ const {
   addLogToDeploymentRecord,
   markDeploymentAsComplete,
   getProjectPort,
+  runShell,
 } = require("./utils/functools");
 const { DEPLOYMENT_STATUS } = require("./utils/constants");
 
@@ -293,15 +294,6 @@ app.get("/status/:job_id", async (req, res) => {
 
   res.json({ status, logs: logs || "" });
 });
-
-function runShell(cmd) {
-  return new Promise((resolve, reject) => {
-    exec(cmd, { maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
-      if (err) return reject(stderr || err.message);
-      resolve(stdout);
-    });
-  });
-}
 
 app.listen(DEPLOYSTER_PORT, () =>
   console.log(`🚀 Deployster Server running on port ${DEPLOYSTER_PORT}`)

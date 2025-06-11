@@ -18,8 +18,14 @@ const updateProjectValidationSchema = Joi.object({
   log_paths: Joi.array().required(),
 });
 
+const serverActionValidationSchema = Joi.object({
+  project_id: Joi.string().uri().required().allow(""),
+  action: Joi.string().valid("redeploy", "kill").required(),
+});
+
 module.exports = {
   createUserValidationSchema,
   loginValidationSchema,
   updateProjectValidationSchema,
+  serverActionValidationSchema,
 };

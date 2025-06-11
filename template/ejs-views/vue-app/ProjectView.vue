@@ -314,16 +314,45 @@
 
         <!-- More Settings Tab -->
         <div v-if="activeSettingsTab === 'More Settings'" class="d-grid gap-2">
-          <button disabled class="btn btn-outline-danger" @click="killServer">
-            Kill Server
-          </button>
-          <button
-            disabled
-            class="btn btn-outline-primary"
-            @click="redeployServer"
+          <div
+            v-if="project.deployster_conf?.status"
+            class="alert alert-primary"
           >
-            Redeploy
-          </button>
+            <i class="bi bi-check-circle-fill me-2"></i> Supervisor
+            <span class="commit-hash">deployster.conf</span> is setup.
+          </div>
+          <div v-else class="alert alert-danger">
+            <i class="bi bi-exclamation-octagon-fill me-2"></i>
+            {{ project.deployster_conf?.message }}
+          </div>
+
+          <div
+            v-if="deploysterServerServiceInProgress"
+            class="d-flex flex-column justify-content-center align-items-center"
+          >
+            <div class="spinner-grow" role="status">
+              <span class="visually-hidden">Loading...</span>
+            </div>
+
+            <small>Initiating command...</small>
+          </div>
+          <div v-else>
+            <button
+              :disabled="!project.deployster_conf?.status"
+              class="btn btn-outline-danger"
+              style="font-weight: 600"
+              @click="killServer"
+            >
+              Kill Server
+            </button>
+            <button
+              :disabled="!project.deployster_conf?.status"
+              class="btn btn-outline-primary"
+              @click="redeployServer"
+            >
+              Redeploy
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -371,8 +400,10 @@ export default {
         current_head: "",
         tcp_port: "",
         app_url: "",
+        deployster_conf: {},
       },
       projectDeploymentActivities: [],
+      deploysterServerServiceInProgress: false,
     };
   },
   computed: {
@@ -667,13 +698,40 @@ export default {
     },
     killServer() {
       if (confirm("Are you sure you want to kill the server?")) {
-        alert("Server killed (mock action).");
+        this.initiateDeploysterServerActivity("kill");
       }
     },
     redeployServer() {
       if (confirm("Redeploy the server now?")) {
-        alert("Redeploy started (mock action).");
+        this.initiateDeploysterServerActivity("redeploy");
       }
+    },
+    initiateDeploysterServerActivity(action) {
+      this.deploysterServerServiceInProgress = true;
+
+      axios
+        .post(
+          `${this.$BACKEND_BASE_URL}/server-action`,
+          { project_id: this.project.id, action },
+          this.$store.state.headers
+        )
+        .then((res) => {
+          toastr.success(res.data.message);
+          this.getProjectData();
+        })
+        .catch((err) => {
+          console.log(err);
+          if (err.response?.data) {
+            toastr.error(
+              err.response.data.message || "Error processing request"
+            );
+          } else {
+            toastr.error("Error processing request");
+          }
+        })
+        .finally(() => {
+          this.deploysterServerServiceInProgress = false;
+        });
     },
   },
 };

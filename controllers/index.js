@@ -10,6 +10,7 @@ const {
   createUserValidationSchema,
   loginValidationSchema,
   updateProjectValidationSchema,
+  serverActionValidationSchema,
 } = require("../utils/validator");
 const redisClient = require("../redis");
 const {
@@ -18,6 +19,8 @@ const {
   getTotalLinesFromFile,
   getLogContentFromFile,
   expandTilde,
+  checkDeploysterConf,
+  handleServerSpinOrKillAction,
 } = require("../utils/functools");
 const { DEPLOYMENT_STATUS } = require("../utils/constants");
 const jwtr = new JWTR(redisClient);
@@ -270,6 +273,7 @@ async function getSingleProject(req, res) {
     status: projectInView.tcp_port
       ? await isPortActive(projectInView.tcp_port)
       : null,
+    deployster_conf: checkDeploysterConf(projectInView.app_local_path),
   };
 
   return res.json({
@@ -574,6 +578,56 @@ async function streamLogFile(req, res) {
   }
 }
 
+async function spinOrKill(req, res) {
+  try {
+    const { error } = serverActionValidationSchema.validate(req.body);
+    if (error) {
+      res.status(400);
+      res.json({
+        status: false,
+        message: error.details[0].message,
+      });
+      return;
+    }
+
+    const user = req.user;
+    let projectInView;
+    const { project_id, action } = req.body;
+
+    try {
+      projectInView = await getSingleRow(
+        `
+        SELECT id
+        FROM projects
+        WHERE user_id = ? AND id = ?
+      `,
+        [user.id, project_id]
+      );
+    } catch (error) {
+      console.log({ error });
+      return res
+        .status(403)
+        .json({ status: false, message: "Error getting project" });
+    }
+
+    const response = await handleServerSpinOrKillAction(
+      projectInView.app_local_path,
+      action
+    );
+
+    if (response.status) {
+      return res.json(response);
+    } else {
+      return res.status(403).json(response);
+    }
+  } catch (error) {
+    console.log({ error });
+    return res
+      .status(500)
+      .json({ status: false, message: "Internal server error" });
+  }
+}
+
 module.exports = {
   createUser,
   loginUser,
@@ -585,4 +639,5 @@ module.exports = {
   getProjectDeploymentActivities,
   getActiveDeploymentLog,
   streamLogFile,
+  spinOrKill,
 };

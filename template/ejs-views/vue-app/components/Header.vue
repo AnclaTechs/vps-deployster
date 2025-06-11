@@ -1,3 +1,20 @@
+<style scoped>
+.log-out-container {
+  background-color: #f10f0f26;
+  cursor: pointer;
+}
+
+.log-out-button {
+  background-color: #ff0000ad;
+  padding: 5px 10px;
+  width: 120px;
+  color: #ffffff;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+}
+</style>
+
 <template>
   <div class="container">
     <div class="mt-4 mb-3">
@@ -12,7 +29,37 @@
             Deployster Admin
           </span>
         </router-link>
+
+        <div class="nav-link log-out-container">
+          <div @click="signOutUser()" class="log-out-button">
+            <i class="far fa-sign-out me-2"></i> &nbsp;
+            <span v-if="!isSideBarCollapsed">Log Out</span>
+          </div>
+        </div>
       </div>
     </div>
   </div>
 </template>
+
+<script>
+module.exports = {
+  data() {
+    return {};
+  },
+
+  methods: {
+    signOutUser() {
+      axios
+        .post(`${this.$BACKEND_BASE_URL}/logout`, {}, this.$store.state.headers)
+        .then((data) => {
+          this.$store.commit("resetUserData");
+          this.$router.push("/login");
+          toastr.success("User logged out successfully");
+        })
+        .catch((err) => {
+          toastr.error(err.response.data.message || "Error processing request");
+        });
+    },
+  },
+};
+</script>
