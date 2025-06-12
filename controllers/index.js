@@ -20,7 +20,7 @@ const {
   getLogContentFromFile,
   expandTilde,
   checkDeploysterConf,
-  handleServerSpinOrKillAction,
+  serverActionHandler,
 } = require("../utils/functools");
 const { DEPLOYMENT_STATUS } = require("../utils/constants");
 const jwtr = new JWTR(redisClient);
@@ -578,7 +578,7 @@ async function streamLogFile(req, res) {
   }
 }
 
-async function spinOrKill(req, res) {
+async function spinUpOrKillServer(req, res) {
   try {
     const { error } = serverActionValidationSchema.validate(req.body);
     if (error) {
@@ -610,7 +610,7 @@ async function spinOrKill(req, res) {
         .json({ status: false, message: "Error getting project" });
     }
 
-    const response = await handleServerSpinOrKillAction(
+    const response = await serverActionHandler(
       projectInView.app_local_path,
       action
     );
@@ -639,5 +639,5 @@ module.exports = {
   getProjectDeploymentActivities,
   getActiveDeploymentLog,
   streamLogFile,
-  spinOrKill,
+  spinUpOrKillServer,
 };

@@ -10,7 +10,7 @@ const {
   getProjectDeploymentActivities,
   getActiveDeploymentLog,
   streamLogFile,
-  spinOrKill,
+  spinUpOrKillServer,
 } = require("../controllers");
 const { authenticateUser } = require("../middlewares");
 var router = express.Router();
@@ -37,6 +37,6 @@ router.get(
 
 router.get("/stream-log-file", authenticateUser, streamLogFile);
 
-router.post("/server-action", authenticateUser, spinOrKill);
+router.post("/server-action", authenticateUser, spinUpOrKillServer);
 
 module.exports = router;

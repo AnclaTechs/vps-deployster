@@ -336,7 +336,7 @@
 
             <small>Initiating command...</small>
           </div>
-          <div v-else>
+          <div v-else class="d-flex gap-3 flex-column">
             <button
               :disabled="!project.deployster_conf?.status"
               class="btn btn-outline-danger"

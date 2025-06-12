@@ -260,7 +260,7 @@ function checkDeploysterConf(project_path) {
   }
 }
 
-async function handleServerSpinOrKillAction(projectPath, actionType) {
+async function serverActionHandler(projectPath, actionType) {
   const conf = checkDeploysterConf(projectPath);
   if (!conf.status) {
     return conf;
@@ -268,9 +268,11 @@ async function handleServerSpinOrKillAction(projectPath, actionType) {
 
   let command;
   if (actionType === "redeploy") {
-    command = `supervisorctl restart ${programName}`;
+    command = `supervisorctl reread && supervisorctl update && supervisorctl restart ${programName}`;
   } else if (actionType === "kill") {
     command = `supervisorctl stop ${programName}`;
+  } else if (actionType === "status") {
+    command = `supervisorctl status ${programName}`;
   } else {
     return {
       status: false,
@@ -310,5 +312,5 @@ module.exports = {
   expandTilde,
   checkDeploysterConf,
   runShell,
-  handleServerSpinOrKillAction,
+  serverActionHandler,
 };
