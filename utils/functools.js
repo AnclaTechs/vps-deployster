@@ -62,7 +62,7 @@ async function isPortActive(port) {
   return new Promise((resolve) => {
     exec(`lsof -iTCP:${port} -sTCP:LISTEN -n -P`, (error, stdout) => {
       if (error || !stdout) {
-        return resolve(false); // Port not in use or error
+        return resolve(false); // Error OR Port not in use
       }
       return resolve(true); // Port is in use
     });
@@ -158,6 +158,15 @@ function convertFolderNameToDocumentTitle(folderName) {
 }
 
 /**
+ *
+ * @param {String} path
+ * @returns {String}
+ */
+function getProjectFolderNameFromPath(path) {
+  return Array.from(path.split("/")).pop();
+}
+
+/**
  * Wrapper function around native tail terminal method
  * @param {String} path
  * @param {Number} n
@@ -226,12 +235,15 @@ function _getProgramNameFromConf(confContent) {
  */
 function checkDeploysterConf(project_path) {
   //const cwd = process.cwd();
-  const confPath = path.join(project_path, "deployster.conf");
+  const requiredDeploysterConfigurationFile = `dply.${getProjectFolderNameFromPath(
+    project_path
+  ).toLowerCase()}.conf`;
+  const confPath = path.join(project_path, requiredDeploysterConfigurationFile);
 
   if (!fs.existsSync(confPath)) {
     return {
       status: false,
-      message: `deployster.conf not found in ${project_path}`,
+      message: `${requiredDeploysterConfigurationFile} not found in ${project_path}`,
     };
   }
 
@@ -242,6 +254,7 @@ function checkDeploysterConf(project_path) {
     return {
       status: false,
       message: `Could not find a [program:<name>] section in deployster.conf`,
+      data: {},
     };
   }
 
@@ -251,11 +264,13 @@ function checkDeploysterConf(project_path) {
     return {
       status: true,
       message: `Config is valid: [program:${programName}] matches folder name "${folderName}".`,
+      data: { programName },
     };
   } else {
     return {
       status: false,
       message: `Mismatch: [program:${programName}] ≠ folder name "${folderName}".`,
+      data: { programName },
     };
   }
 }
@@ -266,6 +281,7 @@ async function serverActionHandler(projectPath, actionType) {
     return conf;
   }
 
+  const programName = conf.data.programName;
   let command;
   if (actionType === "redeploy") {
     command = `supervisorctl reread && supervisorctl update && supervisorctl restart ${programName}`;
@@ -306,6 +322,7 @@ module.exports = {
   addLogToDeploymentRecord,
   markDeploymentAsComplete,
   convertFolderNameToDocumentTitle,
+  getProjectFolderNameFromPath,
   getLastNLinesFromFile,
   getLogContentFromFile,
   getTotalLinesFromFile,

@@ -22,6 +22,7 @@ const {
   expandTilde,
   checkDeploysterConf,
   serverActionHandler,
+  getProjectFolderNameFromPath,
 } = require("../utils/functools");
 const { DEPLOYMENT_STATUS } = require("../utils/constants");
 const jwtr = new JWTR(redisClient);
@@ -223,7 +224,7 @@ async function getAllProjects(req, res) {
       projects.map(async (projectData) => ({
         ...projectData,
         name: convertFolderNameToDocumentTitle(
-          Array.from(projectData.app_local_path.split("/")).pop()
+          getProjectFolderNameFromPath(projectData.app_local_path)
         ),
         status: await isPortActive(projectData.tcp_port),
       }))
@@ -269,7 +270,7 @@ async function getSingleProject(req, res) {
     ...projectInView,
     current_head: String(projectInView.current_head).slice(0, 7),
     name: convertFolderNameToDocumentTitle(
-      Array.from(projectInView.app_local_path.split("/")).pop()
+      getProjectFolderNameFromPath(projectInView.app_local_path)
     ),
     status: projectInView.tcp_port
       ? await isPortActive(projectInView.tcp_port)
