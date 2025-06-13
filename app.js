@@ -1,9 +1,9 @@
 require("dotenv").config();
+const http = require("http");
 const moment = require("moment");
 const path = require("path");
 const expressLayout = require("express-ejs-layouts");
 const express = require("express");
-const { exec } = require("child_process");
 const cors = require("cors");
 const redisClient = require("./redis");
 const app = express();
@@ -21,6 +21,7 @@ const {
   runShell,
 } = require("./utils/functools");
 const { DEPLOYMENT_STATUS } = require("./utils/constants");
+const setupTerminalWSS = require("./webscokets");
 
 // view engine setup
 app.set("views", path.join(__dirname, "template/ejs-views"));
@@ -295,6 +296,9 @@ app.get("/status/:job_id", async (req, res) => {
   res.json({ status, logs: logs || "" });
 });
 
-app.listen(DEPLOYSTER_PORT, () =>
+const server = http.createServer(app);
+setupTerminalWSS(server);
+
+server.listen(DEPLOYSTER_PORT, () =>
   console.log(`🚀 Deployster Server running on port ${DEPLOYSTER_PORT}`)
 );

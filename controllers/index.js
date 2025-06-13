@@ -11,6 +11,7 @@ const {
   loginValidationSchema,
   updateProjectValidationSchema,
   serverActionValidationSchema,
+  bashAccessValidationSchema,
 } = require("../utils/validator");
 const redisClient = require("../redis");
 const {
@@ -628,6 +629,44 @@ async function spinUpOrKillServer(req, res) {
   }
 }
 
+async function bashAccessVerification(req, res) {
+  try {
+    const { error } = bashAccessValidationSchema.validate(req.body);
+    if (error) {
+      res.status(400);
+      res.json({
+        status: false,
+        message: error.details[0].message,
+      });
+      return;
+    }
+
+    const user = req.user;
+    const { system_username, deployster_password } = req.body;
+
+    const passwordMatch = await bcrypt.compare(
+      deployster_password,
+      user.password
+    );
+    if (!passwordMatch) {
+      return res
+        .status(401)
+        .json({ status: false, message: "Invalid deployster password" });
+    } else {
+      return res.json({
+        status: true,
+        message: "Deployster GUI access verified",
+        data: {},
+      });
+    }
+  } catch (error) {
+    console.log({ error });
+    return res
+      .status(500)
+      .json({ status: false, message: "Internal server error" });
+  }
+}
+
 module.exports = {
   createUser,
   loginUser,
@@ -640,4 +679,5 @@ module.exports = {
   getActiveDeploymentLog,
   streamLogFile,
   spinUpOrKillServer,
+  bashAccessVerification,
 };

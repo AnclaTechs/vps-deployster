@@ -2,6 +2,8 @@
 .log-out-container {
   background-color: #f10f0f26;
   cursor: pointer;
+  padding: 10px;
+  border-radius: 20px;
 }
 
 .log-out-button {
@@ -30,7 +32,7 @@
           </span>
         </router-link>
 
-        <div class="nav-link log-out-container">
+        <div class="log-out-container">
           <div @click="signOutUser()" class="log-out-button">
             <i class="far fa-sign-out me-2"></i> &nbsp;
             <span v-if="!isSideBarCollapsed">Log Out</span>

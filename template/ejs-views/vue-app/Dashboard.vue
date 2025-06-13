@@ -1,8 +1,5 @@
 <template>
   <div class="admin-container">
-    <!-- Sidebar -->
-    <!-- <sidebar></sidebar> -->
-
     <!-- Main Content -->
     <main class="content">
       <headerx></headerx>
@@ -36,7 +33,7 @@
                 class="dashboard-analytics-icon-container"
                 style="background-color: rgb(201 143 60)"
               >
-                <i class="fad fa-terminal fa-lg"></i>
+                <i class="fad fa-clock fa-lg"></i>
               </div>
               <div
                 class="d-flex flex-column justify-content-center align-items-center gap-2"
@@ -132,6 +129,103 @@
         </section>
       </div>
     </main>
+    <!--Floating Icon-->
+    <button
+      class="floating-icon"
+      type="button"
+      data-bs-toggle="offcanvas"
+      data-bs-target="#bashInterface"
+      aria-controls="bashInterface"
+    >
+      <i class="gw-bolder fad fa-terminal fa-md"></i>
+    </button>
+    <!--Bash Interface-->
+    <div
+      class="offcanvas offcanvas-bottom"
+      tabindex="-1"
+      id="bashInterface"
+      aria-labelledby="bashInterfaceLabel"
+      :style="{ height: terminalActive ? '55vh' : '75vh' }"
+    >
+      <div class="offcanvas-header">
+        <h5 class="offcanvas-title" id="bashInterfaceLabel">
+          <i class="gw-bolder fad fa-terminal me-2"></i> Bash Terminal
+        </h5>
+        <button
+          type="button"
+          class="btn-close text-reset"
+          data-bs-dismiss="offcanvas"
+          aria-label="Close"
+        ></button>
+      </div>
+      <div class="offcanvas-body small">
+        <div ref="terminalContainer" class="">
+          <div class="my-2 container" v-if="!terminalActive">
+            <span>Setting up Terminal...</span>
+
+            <form
+              @submit.prevent="bashLogin"
+              class="p-3 border rounded mt-2 bg-light"
+            >
+              <div class="">
+                <label class="form-label fw-bold">Remote Username</label>
+                <div class="alert alert-info">
+                  Enter your <strong>specific remote username</strong> (the name
+                  of your home directory on the VPS). <br /><strong
+                    >Note:</strong
+                  >
+                  Logging in as <code>root</code> is not allowed for security
+                  reasons.
+                </div>
+                <input
+                  v-model="bashUsername"
+                  placeholder="e.g. olaronke-alice"
+                  class="form-control"
+                  required
+                />
+              </div>
+
+              <div class="mt-4">
+                <label class="form-label fw-bold">Deployster Password</label>
+                <div class="alert alert-info">
+                  Enter your <strong>Deployster password</strong>. <br />This is
+                  used to re-authenticate your GUI access. This is
+                  <strong>not</strong> your VPS system password.
+                </div>
+                <input
+                  v-model="bashVPSpassword"
+                  type="password"
+                  placeholder="Password"
+                  class="form-control"
+                  required
+                />
+              </div>
+
+              <button
+                :disabled="deploysterGUIverificationInProgress"
+                type="submit"
+                class="mt-4 btn btn-danger w-100"
+              >
+                <div
+                  v-if="deploysterGUIverificationInProgress"
+                  class="spinner-border spinner-border-sm"
+                  aria-hidden="true"
+                ></div>
+                <span v-else>Verify</span>
+              </button>
+
+              <small class="d-block mt-3 text-muted">
+                <strong>Why is this required?</strong><br />
+                Without authentication, anyone accessing this interface could
+                open a live shell session to your server — posing a serious
+                security risk.
+              </small>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!--End Bash-->
   </div>
 </template>
 
@@ -190,6 +284,44 @@ body {
   justify-content: center;
   align-items: center;
 }
+
+.offcanvas-bottom {
+  height: 55vh;
+}
+
+.floating-icon {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  width: 50px;
+  height: 50px;
+  background-color: #007bffa8;
+  border: 0;
+  border-radius: 50%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+  /* transition: transform 0.3s ease; */
+  animation: heartbeat 1.5s ease-in-out infinite;
+}
+
+/* .floating-icon:hover {
+  transform: scale(1.1);
+} */
+
+@keyframes heartbeat {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.1);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
 </style>
 
 <script>
@@ -204,12 +336,18 @@ module.exports = {
   },
   data: function () {
     return {
+      socket: null,
+      terminal: null,
+      terminalActive: false,
+      bashUsername: "",
+      bashVPSpassword: "",
       dashboardDataIsLoading: true,
       dashboardData: {
         count: "N?A",
         lastDeployment: "N?A",
         data: [],
       },
+      deploysterGUIverificationInProgress: false,
     };
   },
   watch: {},
@@ -222,14 +360,105 @@ module.exports = {
           this.dashboardDataIsLoading = false;
         });
     },
+    bashLogin() {
+      this.deploysterGUIverificationInProgress = true;
+      axios
+        .post(
+          `${this.$BACKEND_BASE_URL}/verify-bash-access`,
+          {
+            system_username: this.bashUsername,
+            deployster_password: this.bashVPSpassword,
+          },
+          this.$store.state.headers
+        )
+        .then((res) => {
+          this.initTerminal();
+        })
+        .catch((err) => {
+          console.log(err);
+          if (err.response?.data) {
+            toastr.error(
+              err.response.data.message || "Error processing request"
+            );
+          } else {
+            toastr.error("Error processing request");
+          }
+        })
+        .finally(() => {
+          this.deploysterGUIverificationInProgress = false;
+        });
+    },
+    async initTerminal() {
+      if (!this.terminal) {
+        this.terminal = new Terminal({
+          cursorBlink: true,
+          fontFamily: "monospace",
+          fontSize: 14,
+        });
+
+        this.socket = new WebSocket(
+          `ws://${new URL(this.$BACKEND_BASE_URL).host}/ws/terminal?token=${
+            this.$store.state.headers.headers.Authorization
+          }&username=${String(this.bashUsername).toLocaleLowerCase()}`
+        );
+
+        this.socket.onmessage = (event) => {
+          this.terminal.write(event.data);
+        };
+
+        this.terminal.onData((data) => {
+          this.socket.send(data);
+        });
+
+        await Vue.nextTick();
+        this.terminal.open(this.$refs.terminalContainer);
+        this.terminal.focus();
+        this.terminalActive = true;
+      } else {
+        console.error("Terminal container not found");
+      }
+    },
+    resetTerminalSession() {
+      if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+        this.socket.close();
+        this.socket = null;
+      }
+
+      if (this.terminal) {
+        this.terminal.dispose();
+        this.terminal = null;
+        this.terminalActive = false;
+      }
+
+      this.bashUsername = "";
+      this.bashVPSpassword = "";
+      this.deploysterGUIverificationInProgress = false;
+    },
   },
   mounted() {
     this.getAnalytics();
+    const offcanvasElement = document.getElementById("bashInterface");
+    if (offcanvasElement) {
+      offcanvasElement.addEventListener("shown.bs.offcanvas", () => {
+        // this.initTerminal();
+      });
+
+      offcanvasElement.addEventListener("hidden.bs.offcanvas", () => {
+        if (this.terminal) {
+          this.resetTerminalSession();
+          this.terminal.dispose();
+          this.terminal = null;
+        }
+      });
+    }
   },
   beforeMount() {
     if (this.$route.meta.requiresAuth) {
       this.$checkAuthentication();
     }
+  },
+  beforeUnmount() {
+    this.resetTerminalSession();
   },
 };
 </script>

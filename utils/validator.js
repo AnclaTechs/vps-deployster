@@ -23,9 +23,15 @@ const serverActionValidationSchema = Joi.object({
   action: Joi.string().valid("redeploy", "kill").required(),
 });
 
+const bashAccessValidationSchema = Joi.object({
+  system_username: Joi.string().required(),
+  deployster_password: Joi.string().required(),
+});
+
 module.exports = {
   createUserValidationSchema,
   loginValidationSchema,
   updateProjectValidationSchema,
   serverActionValidationSchema,
+  bashAccessValidationSchema,
 };

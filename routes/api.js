@@ -11,6 +11,7 @@ const {
   getActiveDeploymentLog,
   streamLogFile,
   spinUpOrKillServer,
+  bashAccessVerification,
 } = require("../controllers");
 const { authenticateUser } = require("../middlewares");
 var router = express.Router();
@@ -38,5 +39,7 @@ router.get(
 router.get("/stream-log-file", authenticateUser, streamLogFile);
 
 router.post("/server-action", authenticateUser, spinUpOrKillServer);
+
+router.post("/verify-bash-access", authenticateUser, bashAccessVerification);
 
 module.exports = router;
