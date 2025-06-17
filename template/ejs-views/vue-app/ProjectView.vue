@@ -66,6 +66,8 @@
               }}
             </a>
           </div>
+        </div>
+        <div v-if="!pipelineModeIsActive" class="row text-muted">
           <div class="col-md-6 mb-2">
             <i class="fad fa-hashtag me-2"></i>
             <strong>HEAD: &nbsp; </strong>
@@ -110,6 +112,20 @@
           </div>
         </div>
       </div>
+
+      <!--Pipelines-->
+      <PipelineList
+        :pipelines="this.pipelines"
+        :fetchPipelines="this.fetchProjectPipelines"
+        :selectedPipelineStage="this.selectedPipelineStage"
+        :selectPipelineStage="this.selectPipelineStage"
+        :saveChangesToSelectedPipeline="this.saveChangesToSelectedPipeline"
+        :createOrSaveNewPipelineToProject="
+          this.createOrSaveNewPipelineToProject
+        "
+        :deleteProjectPipelineStage="deleteProjectPipelineStage"
+      />
+      <!---->
 
       <!-- Tabs for Activity and Logs -->
       <div class="bg-white p-4 rounded shadow-sm">
@@ -211,6 +227,24 @@
       </div>
 
       <div class="offcanvas-body">
+        <!--Pipeline In View-->
+        <div
+          class="d-flex my-3 flex-row align-items-center rounded"
+          style="border: 1px solid gray; font-weight: 500"
+        >
+          <div style="padding: 5px">Pipeline Stage:</div>
+          <div
+            style="
+              padding: 5px;
+              background: gray;
+              flex: 1;
+              margin-left: 5px;
+              color: #f2f2f2;
+            "
+          >
+            {{ selectedPipelineStage?.stage_name || "General" }}
+          </div>
+        </div>
         <!-- Dropdown Nav -->
         <div class="mb-3">
           <div class="btn-group w-100">
@@ -222,7 +256,7 @@
             >
               {{ activeSettingsTab }}
             </button>
-            <ul class="dropdown-menu w-100">
+            <ul class="dropdown-menu w-100" style="cursor: pointer">
               <li>
                 <a
                   class="dropdown-item"
@@ -257,6 +291,7 @@
           <div class="mb-3">
             <label for="gitUrl" class="form-label">Git URL</label>
             <input
+              :disabled="selectedPipelineStage"
               type="url"
               class="form-control"
               v-model="gitUrl"
@@ -367,12 +402,20 @@ export default {
     ActivityFeed: defineAsyncComponent(() =>
       loadModule("/vue/components/Activity.vue", window.$httpLoaderOption)
     ),
+    PipelineList: defineAsyncComponent(() =>
+      loadModule(
+        "/vue/components/pipeline/PipelineList.vue",
+        window.$httpLoaderOption
+      )
+    ),
     HeaderX: defineAsyncComponent(() =>
       loadModule("/vue/components/Header.vue", window.$httpLoaderOption)
     ),
   },
   data() {
     return {
+      pipelines: null,
+      selectedPipelineStage: null,
       activeSettingsTab: "Project Profile",
       gitUrl: "",
       appUrl: "",
@@ -416,6 +459,9 @@ export default {
         };
       });
     },
+    pipelineModeIsActive() {
+      return this.pipelines?.length || 0 > 0;
+    },
   },
   watch: {
     selectedLog(newPath) {
@@ -423,6 +469,38 @@ export default {
         this.fetchLog(newPath);
         this.startLogStreamPolling();
       }
+    },
+
+    selectedPipelineStage(newPipelineStageObject) {
+      if (this.pipelineModeIsActive && newPipelineStageObject) {
+        this.appUrl = newPipelineStageObject.app_url || "";
+        this.gitUrl = this.project.repository_url || "";
+        this.logPaths = Array.from(
+          new Set(
+            [
+              newPipelineStageObject.log_file_i_location || "",
+              newPipelineStageObject.log_file_ii_location || "",
+              newPipelineStageObject.log_file_iii_location || "",
+            ].filter(Boolean)
+          )
+        );
+      } else {
+        this.gitUrl = this.project.repository_url || "";
+        this.appUrl = this.project.app_url || "";
+        this.logPaths = Array.from(
+          new Set(
+            [
+              this.project.log_file_i_location || "",
+              this.project.log_file_ii_location || "",
+              this.project.log_file_iii_location || "",
+            ].filter(Boolean)
+          )
+        );
+      }
+
+      this.tab = "activity";
+      this.projectActivityIsLoading = true;
+      this.getProjectActivities();
     },
   },
   mounted() {
@@ -453,17 +531,20 @@ export default {
         .then((res) => {
           const projectData = res.data.data;
           this.project = projectData;
-          this.gitUrl = projectData.repository_url || "";
-          this.appUrl = projectData.app_url || "";
-          this.logPaths = Array.from(
-            new Set(
-              [
-                projectData.log_file_i_location || "",
-                projectData.log_file_ii_location || "",
-                projectData.log_file_iii_location || "",
-              ].filter(Boolean)
-            )
-          );
+          if (!this.selectedPipelineStage) {
+            // i.e Only Update Generic Data directly when NO pipeline is selected
+            this.gitUrl = projectData.repository_url || "";
+            this.appUrl = projectData.app_url || "";
+            this.logPaths = Array.from(
+              new Set(
+                [
+                  projectData.log_file_i_location || "",
+                  projectData.log_file_ii_location || "",
+                  projectData.log_file_iii_location || "",
+                ].filter(Boolean)
+              )
+            );
+          }
           this.projectDataIsLoading = false;
         });
     },
@@ -471,7 +552,9 @@ export default {
       if (this.tab === "activity") {
         axios
           .get(
-            `${this.$BACKEND_BASE_URL}/project/${this.id}/deployment-activities`,
+            this.selectedPipelineStage
+              ? `${this.$BACKEND_BASE_URL}/project/${this.id}/deployment-activities?pipelineStage=${this.selectedPipelineStage?.stage_uuid}`
+              : `${this.$BACKEND_BASE_URL}/project/${this.id}/deployment-activities`,
             this.$store.state.headers
           )
           .then((res) => {
@@ -485,7 +568,9 @@ export default {
       this.updatingProjectSettings = true;
       axios
         .patch(
-          `${this.$BACKEND_BASE_URL}/project/${this.id}`,
+          this.selectedPipelineStage
+            ? `${this.$BACKEND_BASE_URL}/project/${this.id}?pipelineStage=${this.selectedPipelineStage?.stage_uuid}`
+            : `${this.$BACKEND_BASE_URL}/project/${this.id}`,
           {
             git_url: this.gitUrl,
             app_url: this.appUrl,
@@ -497,6 +582,9 @@ export default {
           toastr.success(res.data.message);
           this.updatingProjectSettings = false;
           this.getProjectData();
+          if (this.pipelineModeIsActive) {
+            this.fetchProjectPipelines();
+          }
         })
         .catch((err) => {
           console.log(err);
@@ -731,6 +819,115 @@ export default {
         })
         .finally(() => {
           this.deploysterServerServiceInProgress = false;
+        });
+    },
+    fetchProjectPipelines() {
+      axios
+        .get(
+          `${this.$BACKEND_BASE_URL}/project/${this.id}/pipe-line-json`,
+          this.$store.state.headers
+        )
+        .then((res) => {
+          this.pipelines = res.data.data || [];
+        })
+        .catch((err) => {
+          console.log(err);
+          if (err.response?.data) {
+            toastr.error(
+              err.response.data.message || "Error processing request"
+            );
+          } else {
+            toastr.error("Error processing request");
+          }
+        });
+    },
+    selectPipelineStage(stageId) {
+      if (stageId) {
+        if (this.selectedPipelineStage?.stage_uuid === stageId) {
+          this.selectedPipelineStage = null;
+        } else {
+          this.selectedPipelineStage = this.pipelines.find(
+            (data) => data.stage_uuid == stageId
+          );
+        }
+      } else {
+        this.selectedPipelineStage = null;
+      }
+    },
+    saveChangesToSelectedPipeline(stageUUID, data) {
+      return axios
+        .post(
+          `${this.$BACKEND_BASE_URL}/project/update-pipeline-json`,
+          {
+            project_id: this.project.id,
+            stage_uuid: stageUUID,
+            data: data,
+          },
+          this.$store.state.headers
+        )
+        .then((res) => {
+          return true;
+        })
+        .catch((err) => {
+          console.log(err);
+          if (err.response?.data) {
+            toastr.error(
+              err.response.data.message || "Error processing request"
+            );
+          } else {
+            toastr.error("Error processing request");
+          }
+          return false;
+        });
+    },
+    createOrSaveNewPipelineToProject(data) {
+      return axios
+        .post(
+          `${this.$BACKEND_BASE_URL}/project/add-pipeline-json`,
+          {
+            project_id: this.project.id,
+            data: data,
+          },
+          this.$store.state.headers
+        )
+        .then((res) => {
+          return true;
+        })
+        .catch((err) => {
+          console.log(err);
+          if (err.response?.data) {
+            toastr.error(
+              err.response.data.message || "Error processing request"
+            );
+          } else {
+            toastr.error("Error processing request");
+          }
+          return false;
+        });
+    },
+    deleteProjectPipelineStage(stageUUID) {
+      return axios
+        .post(
+          `${this.$BACKEND_BASE_URL}/project/delete-pipeline-json`,
+          {
+            project_id: this.project.id,
+            stage_uuid: stageUUID,
+          },
+          this.$store.state.headers
+        )
+        .then((res) => {
+          return true;
+        })
+        .catch((err) => {
+          console.log(err);
+          if (err.response?.data) {
+            toastr.error(
+              err.response.data.message || "Error processing request"
+            );
+          } else {
+            toastr.error("Error processing request");
+          }
+          return false;
         });
     },
   },

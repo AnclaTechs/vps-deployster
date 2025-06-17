@@ -28,25 +28,32 @@ model Project {
     log_file_i_location   String?
     log_file_ii_location  String?
     log_file_iii_location String?
+    pipeline_json         String? // Stringified JSON array of pipeline stages, each containing: { stage_uuid: string, stage_name: string, git_branch: string, environment_variables: array, tcp_port: number?, current_head: string?, app_url: string?, log_file_i_location: string?, log_file_ii_location: string?, log_file_iii_location: string? }
     deployments           Deployment[]
     activityLogs          ActivityLog[]
+
+    // Pipeline JSON Rationale:
+    // THE idea behind keeping a miniature of the parent object in the pipeline json is because it's optional. A project may not need a pipeline  but once activated it becomes
+    // imperative to seprate concerns but also importantly to keep it fluid. Hence why I went for this instead of creating a model/table for each stage. A pipeline stage can be temporary/transeint
+    // to allow each project stage have a benefit/create the perception of independence
 
     @@map("projects")
 }
 
 model Deployment {
-    id            Int       @id @default(autoincrement())
-    user          User      @relation(fields: [user_id], references: [id])
-    user_id       Int
-    project       Project?  @relation(fields: [project_id], references: [id])
-    project_id    Int
-    commit_hash   String
-    action        String // DEPLOY or ROLLBACK
-    status        String // RUNNING, COMPLETED or FAILED
-    started_at    DateTime  @default(now())
-    finished_at   DateTime?
-    log_output    String?
-    artifact_path String?
+    id                  Int       @id @default(autoincrement())
+    user                User      @relation(fields: [user_id], references: [id])
+    user_id             Int
+    project             Project?  @relation(fields: [project_id], references: [id])
+    project_id          Int
+    commit_hash         String
+    action              String // DEPLOY or ROLLBACK
+    status              String // RUNNING, COMPLETED or FAILED
+    started_at          DateTime  @default(now())
+    finished_at         DateTime?
+    log_output          String?
+    artifact_path       String?
+    pipeline_stage_uuid String?
 
     activityLogs ActivityLog[]
 

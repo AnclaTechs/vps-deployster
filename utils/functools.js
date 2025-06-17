@@ -157,6 +157,10 @@ function convertFolderNameToDocumentTitle(folderName) {
     .join(" ");
 }
 
+function capitalizeFirstLetter(string) {
+  return String(string).charAt(0).toUpperCase() + String(string).slice(1);
+}
+
 /**
  *
  * @param {String} path
@@ -316,11 +320,30 @@ async function runShell(cmd) {
   });
 }
 
+/**
+ * Parses and validates a JSON string representing a project pipeline configuration.
+ * @param {string} jsonstring - A JSON string containing pipeline data.
+ * @returns {object|null} - The parsed and validated pipeline object, or null if parsing/validation fails.
+ */
+function getProjectPipelineJSON(jsonstring) {
+  if (typeof jsonstring !== "string" || jsonstring.trim() === "") {
+    return null;
+  }
+
+  try {
+    const parsedData = JSON.parse(jsonstring);
+    return parsedData;
+  } catch (err) {
+    return null;
+  }
+}
+
 module.exports = {
   getProjectPort,
   isPortActive,
   addLogToDeploymentRecord,
   markDeploymentAsComplete,
+  capitalizeFirstLetter,
   convertFolderNameToDocumentTitle,
   getProjectFolderNameFromPath,
   getLastNLinesFromFile,
@@ -330,4 +353,5 @@ module.exports = {
   checkDeploysterConf,
   runShell,
   serverActionHandler,
+  getProjectPipelineJSON,
 };

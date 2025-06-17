@@ -19,7 +19,7 @@ const updateProjectValidationSchema = Joi.object({
 });
 
 const serverActionValidationSchema = Joi.object({
-  project_id: Joi.string().uri().required().allow(""),
+  project_id: Joi.string().required(),
   action: Joi.string().valid("redeploy", "kill").required(),
 });
 
@@ -28,10 +28,42 @@ const bashAccessValidationSchema = Joi.object({
   deployster_password: Joi.string().required(),
 });
 
+const pipelineEnvironmentVariableFormat = Joi.object().keys({
+  key: Joi.string().required(),
+  value: Joi.string().required(),
+});
+
+const pipelineFormat = Joi.object().keys({
+  stage_name: Joi.string().required(),
+  git_branch: Joi.string().required(),
+  environment_variables: Joi.array()
+    .items(pipelineEnvironmentVariableFormat)
+    .min(0),
+});
+
+const pipelineJsonValidationSchema = Joi.object({
+  project_id: Joi.number().required(),
+  data: Joi.array().items(pipelineFormat).min(1),
+});
+
+const updateExistingPipelineJsonValidationSchema = Joi.object({
+  project_id: Joi.number().required(),
+  stage_uuid: Joi.string().required(),
+  data: pipelineFormat,
+});
+
+const deleteExistingPipelineJsonValidationSchema = Joi.object({
+  project_id: Joi.number().required(),
+  stage_uuid: Joi.string().required(),
+});
+
 module.exports = {
   createUserValidationSchema,
   loginValidationSchema,
   updateProjectValidationSchema,
   serverActionValidationSchema,
   bashAccessValidationSchema,
+  pipelineJsonValidationSchema,
+  updateExistingPipelineJsonValidationSchema,
+  deleteExistingPipelineJsonValidationSchema,
 };

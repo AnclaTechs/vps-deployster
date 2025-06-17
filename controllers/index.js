@@ -1,6 +1,7 @@
 const fs = require("fs").promises;
 const path = require("path");
 const moment = require("moment");
+const { v4: uuidv4 } = require("uuid");
 const bcrypt = require("bcrypt");
 const JWTR = require("jwt-redis").default;
 const pool = require("../database/index");
@@ -12,6 +13,9 @@ const {
   updateProjectValidationSchema,
   serverActionValidationSchema,
   bashAccessValidationSchema,
+  pipelineJsonValidationSchema,
+  updateExistingPipelineJsonValidationSchema,
+  deleteExistingPipelineJsonValidationSchema,
 } = require("../utils/validator");
 const redisClient = require("../redis");
 const {
@@ -23,6 +27,8 @@ const {
   checkDeploysterConf,
   serverActionHandler,
   getProjectFolderNameFromPath,
+  getProjectPipelineJSON,
+  capitalizeFirstLetter,
 } = require("../utils/functools");
 const { DEPLOYMENT_STATUS } = require("../utils/constants");
 const jwtr = new JWTR(redisClient);
@@ -302,7 +308,7 @@ async function updateProjectDetails(req, res) {
     try {
       projectInView = await getSingleRow(
         `
-        SELECT id
+        SELECT *
         FROM projects
         WHERE user_id = ? AND id = ?
       `,
@@ -319,8 +325,11 @@ async function updateProjectDetails(req, res) {
 
     const [LOG_PATH_I, LOG_PATH_II, LOG_PATH_III] = log_paths;
 
-    await pool.run(
-      `
+    const pipelineStageUUID = req.query.pipelineStage;
+
+    if (!pipelineStageUUID) {
+      await pool.run(
+        `
       UPDATE projects 
       SET 
         app_url = ?, 
@@ -330,15 +339,43 @@ async function updateProjectDetails(req, res) {
         log_file_iii_location = ?
       WHERE id = ?
       `,
-      [
-        app_url,
-        git_url,
-        LOG_PATH_I || null,
-        LOG_PATH_II || null,
-        LOG_PATH_III || null,
-        projectInView.id,
-      ]
-    );
+        [
+          app_url,
+          git_url,
+          LOG_PATH_I || null,
+          LOG_PATH_II || null,
+          LOG_PATH_III || null,
+          projectInView.id,
+        ]
+      );
+    } else {
+      const pipelineJson = getProjectPipelineJSON(projectInView.pipeline_json);
+
+      const updatedPipeline = pipelineJson.map((pipelineStage) => {
+        if (pipelineStage.stage_uuid == pipelineStageUUID) {
+          return {
+            ...pipelineStage,
+            app_url: app_url,
+            log_file_i_location: LOG_PATH_I,
+            log_file_ii_location: LOG_PATH_II,
+            log_file_iii_location: LOG_PATH_III,
+          };
+        } else {
+          return pipelineStage;
+        }
+      });
+
+      // UPDATE PROJECT DETAILS
+      await pool.run(
+        `
+      UPDATE projects 
+      SET 
+        pipeline_json = ? 
+      WHERE id = ?
+      `,
+        [JSON.stringify(updatedPipeline), projectInView.id]
+      );
+    }
 
     return res.json({
       status: true,
@@ -356,8 +393,11 @@ async function updateProjectDetails(req, res) {
 async function getProjectDeploymentActivities(req, res) {
   const user = req.user;
   const projectId = req.params.projectId;
+  const pipelineStageUUID = req.query.pipelineStage;
   let projectInView;
   let currentDeployment;
+  let ACTIVITY_PIPELINE_ADDON_QUERY = "";
+  let DEPLOYMENT_PIPELINE_ADDON_QUERY = "";
 
   try {
     // FETCH PROJECT WITH ID
@@ -377,8 +417,13 @@ async function getProjectDeploymentActivities(req, res) {
         .json({ status: false, message: "Error getting project" });
     }
 
+    if (pipelineStageUUID) {
+      ACTIVITY_PIPELINE_ADDON_QUERY = `AND dep.pipeline_stage_uuid = '${pipelineStageUUID}'`;
+      DEPLOYMENT_PIPELINE_ADDON_QUERY = `AND pipeline_stage_uuid = '${pipelineStageUUID}'`;
+    }
+
     const deploymentActivityLogs = await pool.all(
-      "SELECT actlog.*, dep.commit_hash, dep.log_output, u.email FROM activity_logs actlog INNER JOIN deployments dep ON dep.id = actlog.deployment_id INNER JOIN users u ON u.id = dep.user_id WHERE actlog.project_id = ? ORDER BY actlog.id DESC",
+      `SELECT actlog.*, dep.commit_hash, dep.log_output, u.email FROM activity_logs actlog INNER JOIN deployments dep ON dep.id = actlog.deployment_id INNER JOIN users u ON u.id = dep.user_id WHERE actlog.project_id = ? ${ACTIVITY_PIPELINE_ADDON_QUERY} ORDER BY actlog.id DESC`,
       [projectId]
     );
 
@@ -387,6 +432,7 @@ async function getProjectDeploymentActivities(req, res) {
         `SELECT * FROM deployments
           WHERE project_id = ?
             AND status = ?
+            ${DEPLOYMENT_PIPELINE_ADDON_QUERY}
             AND id = (
               SELECT MAX(id) FROM deployments WHERE project_id = ? AND status = ?
             )
@@ -668,6 +714,350 @@ async function bashAccessVerification(req, res) {
   }
 }
 
+async function getListOfProjectPipelineJson(req, res) {
+  const user = req.user;
+  const projectId = req.params.projectId;
+  let projectInView;
+
+  try {
+    // FETCH PROJECT WITH ID
+    try {
+      projectInView = await getSingleRow(
+        `
+        SELECT *
+        FROM projects
+        WHERE user_id = ? AND id = ?
+      `,
+        [user.id, projectId]
+      );
+    } catch (error) {
+      console.log({ error });
+      return res
+        .status(403)
+        .json({ status: false, message: "Error getting project" });
+    }
+
+    const pipelineJson = getProjectPipelineJSON(projectInView.pipeline_json);
+
+    return res.json({
+      status: true,
+      message: "Project pipeline returned successfully",
+      data: pipelineJson,
+    });
+  } catch (error) {
+    console.log({ error });
+    return res
+      .status(500)
+      .json({ status: false, message: "Internal server error" });
+  }
+}
+
+async function addNewPipelineJsonRecord(req, res) {
+  try {
+    const { error } = pipelineJsonValidationSchema.validate(req.body);
+    if (error) {
+      res.status(400);
+      res.json({
+        status: false,
+        message: error.details[0].message,
+      });
+      return;
+    }
+
+    const user = req.user;
+    const { project_id, data } = req.body;
+    let projectInView;
+
+    try {
+      projectInView = await getSingleRow(
+        `
+        SELECT *
+        FROM projects
+        WHERE user_id = ? AND id = ?
+      `,
+        [user.id, project_id]
+      );
+    } catch (error) {
+      return res
+        .status(403)
+        .json({ status: false, message: "Error getting project" });
+    }
+
+    const pipelineJson = getProjectPipelineJSON(projectInView.pipeline_json);
+    if (pipelineJson) {
+      const duplicateStage = data.find((stage) => {
+        const { stage_name, git_branch } = stage;
+        return pipelineJson.some(
+          (existingStage) =>
+            existingStage.stage_name === capitalizeFirstLetter(stage_name) ||
+            existingStage.git_branch === String(git_branch).toLowerCase()
+        );
+      });
+
+      if (duplicateStage) {
+        return res.status(403).json({
+          status: false,
+          message: "Git branch or stage name already used",
+        });
+      }
+    }
+
+    let pipelines;
+    if (pipelineJson) {
+      pipelines = [...pipelineJson];
+    } else {
+      pipelines = [];
+    }
+
+    // PROCEED
+    await data.reduce(async (prevPromise, stage) => {
+      {
+        /** Ensure the previous transaction finishes */
+      }
+      await prevPromise;
+      {
+        /** */
+      }
+      pipelines.push({
+        stage_uuid: uuidv4(),
+        stage_name: capitalizeFirstLetter(stage.stage_name),
+        git_branch: String(stage.git_branch).toLowerCase(),
+        environment_variables: stage.environment_variables,
+        tcp_port: null,
+        current_head: null,
+        app_url: null,
+        log_file_i_location: null,
+        log_file_ii_location: null,
+        log_file_iii_location: null,
+      });
+
+      return Promise.resolve();
+    }, Promise.resolve());
+
+    // UPDATE PROJECT DETAILS
+    await pool.run(
+      `
+      UPDATE projects 
+      SET 
+        pipeline_json = ? 
+      WHERE id = ?
+      `,
+      [JSON.stringify(pipelines), projectInView.id]
+    );
+
+    return res.json({
+      status: true,
+      message: "Project details updated successfully",
+      data: {},
+    });
+  } catch (error) {
+    console.log({ error });
+    return res
+      .status(500)
+      .json({ status: false, message: "Internal server error" });
+  }
+}
+
+async function editProjectPipelineJsonRecord(req, res) {
+  try {
+    const { error } = updateExistingPipelineJsonValidationSchema.validate(
+      req.body
+    );
+    if (error) {
+      res.status(400);
+      res.json({
+        status: false,
+        message: error.details[0].message,
+      });
+      return;
+    }
+
+    const user = req.user;
+    const { project_id, stage_uuid, data } = req.body;
+    let projectInView;
+
+    try {
+      projectInView = await getSingleRow(
+        `
+        SELECT *
+        FROM projects
+        WHERE user_id = ? AND id = ?
+      `,
+        [user.id, project_id]
+      );
+    } catch (error) {
+      return res
+        .status(403)
+        .json({ status: false, message: "Error getting project" });
+    }
+
+    const pipelineJson = getProjectPipelineJSON(projectInView.pipeline_json);
+    let pipelineStageInView;
+    if (pipelineJson) {
+      pipelineStageInView = pipelineJson.find((stage) => {
+        const { stage_uuid } = stage;
+        return pipelineJson.find(
+          (existingStage) => existingStage.stage_uuid === String(stage_uuid)
+        );
+      });
+
+      if (!pipelineStageInView) {
+        return res.status(403).json({
+          status: false,
+          message: "Unable to reconcile stage UUID",
+        });
+      }
+    } else {
+      return res.status(403).json({
+        status: false,
+        message: "Project has no active pipeline record",
+      });
+    }
+
+    // CHECK THAT NEW UPDATE DOESN'T CLASH WITH OTHER EXISTING RECORD
+
+    const duplicateStage = pipelineJson.find((existingStage) => {
+      return (
+        (existingStage.stage_name == data.stage_name ||
+          existingStage.git_branch == data.git_branch) &&
+        existingStage.stage_uuid !== stage_uuid
+      );
+    });
+
+    if (duplicateStage) {
+      return res.status(403).json({
+        status: false,
+        message: "Git branch or stage name already used",
+      });
+    }
+
+    const updatedPipeline = pipelineJson.map((pipelineStage) => {
+      if (pipelineStage.stage_uuid == stage_uuid) {
+        return {
+          stage_uuid,
+          stage_name: capitalizeFirstLetter(data.stage_name),
+          git_branch: String(data.git_branch).toLowerCase(),
+          environment_variables: data.environment_variables,
+          tcp_port: pipelineStage.tcp_port,
+          current_head: pipelineStage.current_head,
+          app_url: pipelineStage.app_url,
+          log_file_i_location: pipelineStage.log_file_i_location,
+          log_file_ii_location: pipelineStage.log_file_ii_location,
+          log_file_iii_location: pipelineStage.log_file_iii_location,
+        };
+      } else {
+        return pipelineStage;
+      }
+    });
+
+    // UPDATE PROJECT DETAILS
+    await pool.run(
+      `
+      UPDATE projects 
+      SET 
+        pipeline_json = ? 
+      WHERE id = ?
+      `,
+      [JSON.stringify(updatedPipeline), projectInView.id]
+    );
+
+    return res.json({
+      status: true,
+      message: "Project details updated successfully",
+      data: {},
+    });
+  } catch (error) {
+    console.log({ error });
+    return res
+      .status(500)
+      .json({ status: false, message: "Internal server error" });
+  }
+}
+
+async function deleteProjectPipelineJsonRecord(req, res) {
+  try {
+    const { error } = deleteExistingPipelineJsonValidationSchema.validate(
+      req.body
+    );
+    if (error) {
+      res.status(400);
+      res.json({
+        status: false,
+        message: error.details[0].message,
+      });
+      return;
+    }
+
+    const user = req.user;
+    const { project_id, stage_uuid } = req.body;
+    let projectInView;
+
+    try {
+      projectInView = await getSingleRow(
+        `
+        SELECT *
+        FROM projects
+        WHERE user_id = ? AND id = ?
+      `,
+        [user.id, project_id]
+      );
+    } catch (error) {
+      return res
+        .status(403)
+        .json({ status: false, message: "Error getting project" });
+    }
+
+    const pipelineJson = getProjectPipelineJSON(projectInView.pipeline_json);
+    let pipelineStageInView;
+    if (pipelineJson) {
+      pipelineStageInView = pipelineJson.find((stage) => {
+        const { stage_uuid } = stage;
+        return pipelineJson.find(
+          (existingStage) => existingStage.stage_uuid === String(stage_uuid)
+        );
+      });
+
+      if (!pipelineStageInView) {
+        return res.status(403).json({
+          status: false,
+          message: "Unable to reconcile stage UUID",
+        });
+      }
+    } else {
+      return res.status(403).json({
+        status: false,
+        message: "Project has no active pipeline record",
+      });
+    }
+
+    const updatedPipeline = pipelineJson.filter(
+      (pipelineStage) => pipelineStage.stage_uuid != stage_uuid
+    );
+
+    // UPDATE PROJECT DETAILS
+    await pool.run(
+      `
+      UPDATE projects 
+      SET 
+        pipeline_json = ?
+      WHERE id = ?
+      `,
+      [JSON.stringify(updatedPipeline), projectInView.id]
+    );
+
+    return res.json({
+      status: true,
+      message: "Pipeline stage deleted successfully",
+      data: {},
+    });
+  } catch (error) {
+    console.log({ error });
+    return res
+      .status(500)
+      .json({ status: false, message: "Internal server error" });
+  }
+}
+
 module.exports = {
   createUser,
   loginUser,
@@ -681,4 +1071,8 @@ module.exports = {
   streamLogFile,
   spinUpOrKillServer,
   bashAccessVerification,
+  getListOfProjectPipelineJson,
+  addNewPipelineJsonRecord,
+  editProjectPipelineJsonRecord,
+  deleteProjectPipelineJsonRecord,
 };

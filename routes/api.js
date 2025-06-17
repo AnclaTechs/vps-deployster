@@ -12,6 +12,10 @@ const {
   streamLogFile,
   spinUpOrKillServer,
   bashAccessVerification,
+  addNewPipelineJsonRecord,
+  editProjectPipelineJsonRecord,
+  deleteProjectPipelineJsonRecord,
+  getListOfProjectPipelineJson,
 } = require("../controllers");
 const { authenticateUser } = require("../middlewares");
 var router = express.Router();
@@ -41,5 +45,29 @@ router.get("/stream-log-file", authenticateUser, streamLogFile);
 router.post("/server-action", authenticateUser, spinUpOrKillServer);
 
 router.post("/verify-bash-access", authenticateUser, bashAccessVerification);
+
+router.get(
+  "/project/:projectId/pipe-line-json",
+  authenticateUser,
+  getListOfProjectPipelineJson
+);
+
+router.post(
+  "/project/add-pipeline-json",
+  authenticateUser,
+  addNewPipelineJsonRecord
+);
+
+router.post(
+  "/project/update-pipeline-json",
+  authenticateUser,
+  editProjectPipelineJsonRecord
+); // I CHANGED THIS FROM PATH TO POST
+
+router.post(
+  "/project/delete-pipeline-json",
+  authenticateUser,
+  deleteProjectPipelineJsonRecord
+); // I CHANGED THIS FROM DELETE TO POST
 
 module.exports = router;
