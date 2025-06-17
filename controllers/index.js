@@ -281,7 +281,10 @@ async function getSingleProject(req, res) {
     status: projectInView.tcp_port
       ? await isPortActive(projectInView.tcp_port)
       : null,
-    deployster_conf: checkDeploysterConf(projectInView.app_local_path),
+    deployster_conf: checkDeploysterConf(
+      projectInView.app_local_path,
+      getProjectPipelineJSON(projectInView.pipeline_json)
+    ),
   };
 
   return res.json({

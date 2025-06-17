@@ -229,53 +229,89 @@ function _getProgramNameFromConf(confContent) {
 }
 
 /**
+ * Extracts the program names from a supervisor configuration content.
+ * @param {string} confContent - The content of the supervisor configuration file.
+ * @returns {Array} The extracted program names, or empty array if no program section is found.
+ */
+function getAllProgramNamesFromConf(confContent) {
+  const matches = [...confContent.matchAll(/\[program:([^\]]+)\]/g)];
+  return matches.map((match) => match[1].trim());
+}
+
+/**
  * Checks the validity of a deployster.conf file in the current working directory.
  * Validates if the file exists and if the program name in the configuration
  * matches the current folder name.
- * @param {String} project_path
+ * @param {String} projectPath
  * @returns {Object} An object containing:
  *  - status {boolean}: True if the configuration is valid, false otherwise.
  *  - message {string}: A message describing the result of the validation.
  */
-function checkDeploysterConf(project_path) {
+function checkDeploysterConf(projectPath, pipelineJSON) {
   //const cwd = process.cwd();
   const requiredDeploysterConfigurationFile = `dply.${getProjectFolderNameFromPath(
-    project_path
+    projectPath
   ).toLowerCase()}.conf`;
-  const confPath = path.join(project_path, requiredDeploysterConfigurationFile);
+  const confPath = path.join(projectPath, requiredDeploysterConfigurationFile);
 
   if (!fs.existsSync(confPath)) {
     return {
       status: false,
-      message: `${requiredDeploysterConfigurationFile} not found in ${project_path}`,
+      message: `${requiredDeploysterConfigurationFile} not found in ${projectPath}`,
     };
   }
 
   const confContent = fs.readFileSync(confPath, "utf8");
-  const programName = _getProgramNameFromConf(confContent);
 
-  if (!programName) {
-    return {
-      status: false,
-      message: `Could not find a [program:<name>] section in deployster.conf`,
-      data: {},
-    };
-  }
+  if (!pipelineJSON) {
+    const programName = _getProgramNameFromConf(confContent);
 
-  const folderName = path.basename(project_path);
+    if (!programName) {
+      return {
+        status: false,
+        message: `Could not find a [program:<name>] section in deployster.conf`,
+        data: {},
+      };
+    }
 
-  if (programName === folderName) {
-    return {
-      status: true,
-      message: `Config is valid: [program:${programName}] matches folder name "${folderName}".`,
-      data: { programName },
-    };
+    const folderName = path.basename(projectPath);
+
+    if (programName === folderName) {
+      return {
+        status: true,
+        message: `Config is valid: [program:${programName}] matches folder name "${folderName}".`,
+        data: { programName },
+      };
+    } else {
+      return {
+        status: false,
+        message: `Mismatch: [program:${programName}] ≠ folder name "${folderName}".`,
+        data: { programName },
+      };
+    }
   } else {
-    return {
-      status: false,
-      message: `Mismatch: [program:${programName}] ≠ folder name "${folderName}".`,
-      data: { programName },
-    };
+    const allPrograms = getAllProgramNamesFromConf(confContent);
+    const stages = pipelineJSON.map((data) => data.git_branch);
+    const programName = path.basename(projectPath);
+    const expectedPrograms = stages.map((stage) => `${programName}--${stage}`);
+
+    const missingPrograms = expectedPrograms.filter(
+      (prog) => !allPrograms.includes(prog)
+    );
+
+    if (missingPrograms.length > 0) {
+      return {
+        status: false,
+        message: `Missing programs in conf: ${missingPrograms}`,
+        data: { programName },
+      };
+    } else {
+      return {
+        status: true,
+        message: `All pipeline stages are configured".`,
+        data: { programName },
+      };
+    }
   }
 }
 

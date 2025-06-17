@@ -362,31 +362,38 @@
           </div>
 
           <div
-            v-if="deploysterServerServiceInProgress"
-            class="d-flex flex-column justify-content-center align-items-center"
+            v-if="
+              !pipelineModeIsActive ||
+              (pipelineModeIsActive && selectedPipelineStage)
+            "
           >
-            <div class="spinner-grow" role="status">
-              <span class="visually-hidden">Loading...</span>
-            </div>
+            <div
+              v-if="deploysterServerServiceInProgress"
+              class="d-flex flex-column justify-content-center align-items-center"
+            >
+              <div class="spinner-grow" role="status">
+                <span class="visually-hidden">Loading...</span>
+              </div>
 
-            <small>Initiating command...</small>
-          </div>
-          <div v-else class="d-flex gap-3 flex-column">
-            <button
-              :disabled="!project.deployster_conf?.status"
-              class="btn btn-outline-danger"
-              style="font-weight: 600"
-              @click="killServer"
-            >
-              Kill Server
-            </button>
-            <button
-              :disabled="!project.deployster_conf?.status"
-              class="btn btn-outline-primary"
-              @click="redeployServer"
-            >
-              Redeploy
-            </button>
+              <small>Initiating command...</small>
+            </div>
+            <div v-else class="d-flex gap-3 flex-column">
+              <button
+                :disabled="!project.deployster_conf?.status"
+                class="btn btn-outline-danger"
+                style="font-weight: 600"
+                @click="killServer"
+              >
+                Kill Server
+              </button>
+              <button
+                :disabled="!project.deployster_conf?.status"
+                class="btn btn-outline-primary"
+                @click="redeployServer"
+              >
+                Redeploy
+              </button>
+            </div>
           </div>
         </div>
       </div>
