@@ -20,6 +20,7 @@ const {
   getProjectPort,
   runShell,
   updatePipelineGitHead,
+  getProjectPipelineJSON,
 } = require("./utils/functools");
 const { DEPLOYMENT_STATUS } = require("./utils/constants");
 const setupTerminalWSS = require("./webscokets");
