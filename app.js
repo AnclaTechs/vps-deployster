@@ -249,6 +249,12 @@ app.post("/deploy", async (req, res) => {
       }
     }
 
+    // Append additional supervisor commands
+    const rereadCommand = `supervisorctl reread`;
+    const updateCommand = `supervisorctl update`;
+
+    commands.splice(commands.length - 1, 0, rereadCommand, updateCommand);
+
     const fullDeploymentCommandList = [...gitCommands, ...commands];
 
     for (let i = 0; i < fullDeploymentCommandList.length; i++) {
