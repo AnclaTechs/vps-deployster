@@ -190,11 +190,14 @@ export default {
     },
 
     addEnv(pipelineIndex) {
-      this.pipelines[pipelineIndex].envVars.push({ key: "", value: "" });
+      this.pipelines[pipelineIndex].environment_variables.push({
+        key: "",
+        value: "",
+      });
     },
 
     removeEnv(pipelineIndex, envIndex) {
-      this.pipelines[pipelineIndex].envVars.splice(envIndex, 1);
+      this.pipelines[pipelineIndex].environment_variables.splice(envIndex, 1);
     },
 
     cancel() {
