@@ -374,6 +374,19 @@ function getProjectPipelineJSON(jsonstring) {
   }
 }
 
+async function updatePipelineGitHead(projectId, gitBranch, head) {
+  const projectInView = await getSingleRow(
+    `
+        SELECT *
+        FROM projects
+        WHERE id = ?
+      `,
+    [projectId]
+  );
+}
+
+// PROCEED FROM HERE
+
 module.exports = {
   getProjectPort,
   isPortActive,

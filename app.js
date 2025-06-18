@@ -74,7 +74,7 @@ app.post("/deploy", async (req, res) => {
   let deploymentLockKey;
   const deploymentTimestamp = moment().format("YYYY-MM-DD HH:mm:ss");
   const job_id = Date.now().toString();
-  const { cd, commands, commit_hash } = req.body;
+  const { cd, commands, commit_hash, ref_name } = req.body;
 
   if (!commit_hash) {
     // FOR version 1.0 BACKWARD COMPACTIBILITY
@@ -104,6 +104,18 @@ app.post("/deploy", async (req, res) => {
     })();
     return;
   }
+
+  // LOCAL GIT HOUSE KEEPING
+  const gitCommands = [
+    `git stash`,
+    `git stash drop`,
+    `git fetch`,
+    `git checkout ${ref_name}`,
+  ];
+
+  // GET PIPELINE JSON
+
+  const pipelineJSON = getProjectPipelineJSON(projectInView.pipeline_json);
 
   try {
     /** GET PROJECT CURRENT DEPLOYSTER_PORT */
@@ -170,11 +182,16 @@ app.post("/deploy", async (req, res) => {
     // CREATE DEPLOYMENT RECORD LOG
     deploymentRecord = await createRowAndReturn(
       "deployments",
-      "INSERT INTO deployments (user_id, project_id, commit_hash, action, status, started_at) VALUES (?, ?, ?, ?, ?, ?)",
+      "INSERT INTO deployments (user_id, project_id, commit_hash, pipeline_stage_uuid, action, status, started_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
       [
         user.id,
         projectInView.id,
         commit_hash,
+        pipelineJSON
+          ? pipelineJSON.filter(
+              (pipeline) => pipeline.git_branch == ref_name
+            )[0]?.stage_uuid
+          : null,
         "DEPLOY",
         "RUNNING",
         deploymentTimestamp,
@@ -191,9 +208,52 @@ app.post("/deploy", async (req, res) => {
 
   (async () => {
     await redisClient.set(`job:${job_id}:status`, "running");
-    for (let i = 0; i < commands.length; i++) {
-      const command = `cd ${cd} && ${commands[i]}`;
-      const formattedCommand = `\n[${i + 1}] $ ${commands[i]}\n`;
+
+    // VALIDATE LAST COMMAND
+    // Check that the last command includes supervisorctl start or supervisorctl restart:
+    const lastCommand = commands[commands.length - 1] || "";
+    if (!/supervisorctl\s+(start|restart)\s+[\w\-]+/.test(lastCommand)) {
+      const errorOutput =
+        "[ERROR] Last command must be a 'supervisorctl start|restart'. Aborting...\n";
+      await redisClient.set(`job:${job_id}:status`, "failed");
+      await redisClient.append(`job:${job_id}:logs`, errorOutput);
+      if (deploymentRecord) {
+        await addLogToDeploymentRecord(deploymentRecord.id, errorOutput);
+        await markDeploymentAsComplete(
+          deploymentRecord.id,
+          DEPLOYMENT_STATUS.FAILED,
+          null,
+          deploymentLockKey
+        );
+      }
+      return;
+    }
+
+    // INJECT ENV ENVIRONMENT
+    if (pipelineJSON && Array.isArray(pipelineJSON)) {
+      const pipelineStage = pipelineJSON.find((p) => p.git_branch === ref_name);
+
+      if (pipelineStage && Array.isArray(pipelineStage.environment_variables)) {
+        const keyValues = pipelineStage.environment_variables.map(
+          ({ KEY, VALUE }) => `${KEY}=${VALUE}`
+        );
+
+        const envString = keyValues.join("\n");
+        const escapedEnvString = envString.replace(/"/g, '\\"');
+        const envCommand = `echo "${escapedEnvString}" > .env`;
+
+        // Insert .env creation right before the last command
+        commands.splice(commands.length - 1, 0, envCommand);
+      }
+    }
+
+    const fullDeploymentCommandList = [...gitCommands, ...commands];
+
+    for (let i = 0; i < fullDeploymentCommandList.length; i++) {
+      const command = `cd ${cd} && ${fullDeploymentCommandList[i]}`;
+      const formattedCommand = `\n[${i + 1}] $ ${
+        fullDeploymentCommandList[i]
+      }\n`;
       await redisClient.append(`job:${job_id}:logs`, formattedCommand);
 
       try {
