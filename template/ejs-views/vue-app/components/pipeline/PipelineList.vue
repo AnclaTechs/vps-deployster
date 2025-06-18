@@ -157,7 +157,7 @@
                     selectedPipelineStage?.stage_uuid == pipeline.stage_uuid
                   "
                   class="btn btn-outline-primary btn-sm mt-2"
-                  @click="editPipeline(pipeline.stage_uuid)"
+                  @click.stop="editPipeline(pipeline.stage_uuid)"
                 >
                   Edit
                 </button>
