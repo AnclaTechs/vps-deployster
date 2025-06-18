@@ -74,6 +74,7 @@ app.post("/deploy", async (req, res) => {
   let user;
   let projectInView;
   let deploymentLockKey;
+  let pipelineJSON;
   const deploymentTimestamp = moment().format("YYYY-MM-DD HH:mm:ss");
   const job_id = Date.now().toString();
   const { cd, commands, commit_hash, ref_name } = req.body;
@@ -114,10 +115,6 @@ app.post("/deploy", async (req, res) => {
     `git fetch`,
     `git checkout ${ref_name}`,
   ];
-
-  // GET PIPELINE JSON
-
-  const pipelineJSON = getProjectPipelineJSON(projectInView.pipeline_json);
 
   try {
     /** GET PROJECT CURRENT DEPLOYSTER_PORT */
@@ -172,6 +169,9 @@ app.post("/deploy", async (req, res) => {
           "INSERT INTO projects (user_id, current_head, app_local_path, tcp_port) VALUES (?, ?, ?, ?)",
           [user.id, commit_hash, cd, ACTIVE_PROJECT_DEPLOYSTER_PORT]
         );
+
+        // GET PIPELINE JSON
+        pipelineJSON = getProjectPipelineJSON(projectInView.pipeline_json);
       } else {
         throw error;
       }
