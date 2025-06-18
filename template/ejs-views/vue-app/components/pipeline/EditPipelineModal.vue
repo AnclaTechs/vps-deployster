@@ -33,14 +33,6 @@
               class="form-control"
             />
           </div>
-          <div class="mb-3">
-            <label class="form-label">Port</label>
-            <input
-              v-model="pipeline.tcp_port"
-              type="number"
-              class="form-control"
-            />
-          </div>
 
           <div class="mb-2">
             <label class="form-label">Environment Variables</label>
