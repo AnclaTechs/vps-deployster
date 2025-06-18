@@ -19,6 +19,7 @@ const {
   markDeploymentAsComplete,
   getProjectPort,
   runShell,
+  updatePipelineGitHead,
 } = require("./utils/functools");
 const { DEPLOYMENT_STATUS } = require("./utils/constants");
 const setupTerminalWSS = require("./webscokets");
@@ -284,6 +285,10 @@ app.post("/deploy", async (req, res) => {
       null,
       null // HOLD ON SUCCESSFUL LOCK-KEY for a moment. It's passed a little later
     );
+
+    if (pipelineJSON) {
+      await updatePipelineGitHead(projectInView.id, ref_name, commit_hash);
+    }
 
     // STORE ARTIFACT
     var newLogMessage = "\nCompressing artifact\n";

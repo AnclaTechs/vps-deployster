@@ -374,18 +374,50 @@ function getProjectPipelineJSON(jsonstring) {
   }
 }
 
-async function updatePipelineGitHead(projectId, gitBranch, head) {
-  const projectInView = await getSingleRow(
-    `
+async function updatePipelineGitHead(projectId, gitBranch, commitHash) {
+  try {
+    const projectInView = await getSingleRow(
+      `
         SELECT *
         FROM projects
         WHERE id = ?
       `,
-    [projectId]
-  );
-}
+      [projectId]
+    );
 
-// PROCEED FROM HERE
+    const pipelineJSON = getProjectPipelineJSON(projectInView.pipeline_json);
+
+    const pipelineStageInView = pipelineJSON.filter(
+      (pipeline) => pipeline.git_branch == gitBranch
+    )[0];
+
+    if (pipelineJSON) {
+      const updatedPipelineJSONrecord = pipelineJSON.map((pipeline) => {
+        if (pipeline.git_branch == gitBranch) {
+          return {
+            ...pipeline,
+            current_head: commitHash,
+          };
+        } else {
+          return pipeline;
+        }
+      });
+
+      // UPDATE PROJECT DETAILS
+      await pool.run(
+        `
+      UPDATE projects 
+      SET 
+        pipeline_json = ? 
+      WHERE id = ?
+      `,
+        [JSON.stringify(updatedPipelineJSONrecord), projectInView.id]
+      );
+    }
+  } catch (err) {
+    console.log("Error updating pipeline head", err);
+  }
+}
 
 module.exports = {
   getProjectPort,
@@ -403,4 +435,5 @@ module.exports = {
   runShell,
   serverActionHandler,
   getProjectPipelineJSON,
+  updatePipelineGitHead,
 };
