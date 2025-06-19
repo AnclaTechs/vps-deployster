@@ -744,20 +744,37 @@ async function getListOfProjectPipelineJson(req, res) {
     let pipelineJson = getProjectPipelineJSON(projectInView.pipeline_json);
 
     if (pipelineJson) {
-      pipelineJson = pipelineJson.map(async (pipeline) => {
-        const pipelinePort = await getPipelinePort(
-          projectInView.app_local_path,
-          `${getProjectFolderNameFromPath(projectInView.app_local_path)}--${
-            pipeline.git_branch
-          }`
+      if (pipelineJson) {
+        pipelineJson = await Promise.all(
+          pipelineJson.map(async (pipeline) => {
+            try {
+              const pipelinePort = await getPipelinePort(
+                projectInView.app_local_path,
+                `${getProjectFolderNameFromPath(
+                  projectInView.app_local_path
+                )}--${pipeline.git_branch}`
+              );
+              return {
+                ...pipeline,
+                current_head: String(pipeline.current_head).slice(0, 7),
+                tcp_port: pipelinePort,
+                status: pipelinePort ? await isPortActive(pipelinePort) : null,
+              };
+            } catch (error) {
+              console.error(
+                `Error processing pipeline ${pipeline.git_branch}:`,
+                error
+              );
+              return {
+                ...pipeline,
+                current_head: String(pipeline.current_head).slice(0, 7),
+                tcp_port: null,
+                status: null,
+              };
+            }
+          })
         );
-        return {
-          ...pipeline,
-          current_head: String(pipeline.current_head).slice(0, 7),
-          tcp_port: pipelinePort,
-          status: pipelinePort ? await isPortActive(pipelinePort) : null,
-        };
-      });
+      }
     }
 
     return res.json({
