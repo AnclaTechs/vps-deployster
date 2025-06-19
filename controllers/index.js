@@ -746,6 +746,7 @@ async function getListOfProjectPipelineJson(req, res) {
     if (pipelineJson) {
       pipelineJson = pipelineJson.map(async (pipeline) => {
         const pipelinePort = await getPipelinePort(
+          projectInView.app_local_path,
           `${getProjectFolderNameFromPath(projectInView.app_local_path)}--${
             pipeline.git_branch
           }`

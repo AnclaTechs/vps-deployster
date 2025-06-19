@@ -58,29 +58,59 @@ async function getProjectPort(projectPath) {
  * Gets the PORT of a running Supervisor program by reading its /proc/<pid>/environ
  * Only works if the Supervisor-managed process is currently running.
  *
- * @param {string} projectName - The Supervisor program name
+ * @param {string} programName - The Supervisor program name
  * @returns {Promise<string|null>} - Port number as string, or null if not found or not running
  */
-async function getPipelinePort(projectName) {
+async function getPipelinePort(projectPath, programName) {
   try {
-    const statusOutput = await runShell(`supervisorctl status ${projectName}`);
-    const pidMatch = statusOutput.match(/pid (\d+)/);
-    if (!pidMatch) return null;
+    const requiredDeploysterConfigurationFile = `dply.${getProjectFolderNameFromPath(
+      projectPath
+    ).toLowerCase()}.conf`;
+    const confPath = path.join(
+      projectPath,
+      requiredDeploysterConfigurationFile
+    );
 
-    const pid = pidMatch[1].trim();
-    const envPath = `/proc/${pid}/environ`;
+    if (!fs.existsSync(confPath)) {
+      console.error(
+        `${requiredDeploysterConfigurationFile} not found in ${projectPath}`
+      );
+      return null;
+    }
 
-    if (!fs.existsSync(envPath)) return null;
-
-    const envBuffer = fs.readFileSync(envPath);
-    const envVars = envBuffer.toString().split("\0");
-    const portEntry = envVars.find((v) => v.startsWith("PORT="));
-
-    return portEntry ? portEntry.split("=")[1] : null;
+    const confContent = fs.readFileSync(confPath, "utf8");
+    const confContentObject = parseSupervisorConfPrograms(confContent);
+    if (confContentObject[programName]) {
+      const programBlock = confContentObject[programName];
+      const port = _extractPortFromSupervisorConf(programBlock);
+      return port;
+    } else {
+      console.error(
+        `${programName} not found in ${requiredDeploysterConfigurationFile}`
+      );
+      return null;
+    }
   } catch (err) {
     console.error(`getPipelinePort error: ${err.message}`);
     return null;
   }
+}
+
+/**
+ * Extracts the PORT value from a program block.
+ * @param {string} programBlock
+ * @returns {string|null}
+ */
+function _extractPortFromSupervisorConf(programBlock) {
+  // Look for PORT in environment=
+  const envMatch = programBlock.match(/environment=.*PORT\s*=\s*"?(\d+)"?/i);
+  if (envMatch) return envMatch[1];
+
+  // Look for PORT in command line
+  const cmdMatch = programBlock.match(/command=.*PORT\s*=\s*(\d+)/i);
+  if (cmdMatch) return cmdMatch[1];
+
+  return null;
 }
 
 /**
@@ -345,6 +375,39 @@ function checkDeploysterConf(projectPath, pipelineJSON) {
   }
 }
 
+/**
+ * Parses a Supervisor .conf file and extracts each [program:...] section with its content.
+ * @param {string} confContent - The entire .conf file as a string.
+ * @returns {Object} An object where keys are program names and values are their config block as strings.
+ */
+function parseSupervisorConfPrograms(confContent) {
+  const lines = confContent.split(/\r?\n/);
+  const programs = {};
+  let currentProgram = null;
+  let currentLines = [];
+
+  for (const line of lines) {
+    const programMatch = line.match(/^\[program:([^\]]+)\]/);
+
+    if (programMatch) {
+      if (currentProgram) {
+        programs[currentProgram] = currentLines.join("\n").trim();
+      }
+
+      currentProgram = programMatch[1].trim();
+      currentLines = [line];
+    } else if (currentProgram) {
+      currentLines.push(line);
+    }
+  }
+
+  if (currentProgram) {
+    programs[currentProgram] = currentLines.join("\n").trim();
+  }
+
+  return programs;
+}
+
 async function serverActionHandler(projectPath, actionType) {
   const conf = checkDeploysterConf(projectPath);
   if (!conf.status) {
@@ -468,6 +531,7 @@ module.exports = {
   getTotalLinesFromFile,
   expandTilde,
   checkDeploysterConf,
+  parseSupervisorConfPrograms,
   runShell,
   serverActionHandler,
   getProjectPipelineJSON,
