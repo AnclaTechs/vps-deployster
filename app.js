@@ -239,9 +239,12 @@ app.post("/deploy", async (req, res) => {
       const pipelineStage = pipelineJSON.find((p) => p.git_branch === ref_name);
 
       if (pipelineStage && Array.isArray(pipelineStage.environment_variables)) {
-        const keyValues = pipelineStage.environment_variables.map(
-          ({ KEY, VALUE }) => `${KEY}=${VALUE}`
-        );
+        const keyValues = pipelineStage.environment_variables.map((env) => {
+          // SUPPORT lower and upper case
+          const key = env.key ?? env.KEY;
+          const value = env.value ?? env.VALUE;
+          return `${key}=${value}`;
+        });
 
         const envString = keyValues.join("\n");
         const escapedEnvString = envString.replace(/"/g, '\\"');
