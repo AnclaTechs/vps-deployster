@@ -162,6 +162,9 @@ app.post("/deploy", async (req, res) => {
         "UPDATE projects SET current_head = ?, tcp_port = ? WHERE id = ?",
         [commit_hash, ACTIVE_PROJECT_DEPLOYSTER_PORT, projectInView.id]
       );
+
+      // GET PIPELINE JSON
+      pipelineJSON = getProjectPipelineJSON(projectInView.pipeline_json);
     } catch (error) {
       if (error instanceof RecordDoesNotExist) {
         projectInView = await createRowAndReturn(
