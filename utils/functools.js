@@ -81,9 +81,13 @@ async function getPipelinePort(projectPath, programName) {
     const confContent = fs.readFileSync(confPath, "utf8");
     const confContentObject = parseSupervisorConfPrograms(confContent);
     if (confContentObject[programName]) {
-      const programBlock = confContentObject[programName];
-      const port = _extractPortFromSupervisorConf(programBlock);
-      return port;
+      try {
+        const programBlock = confContentObject[programName];
+        const port = _extractPortFromSupervisorConf(programBlock);
+        return port;
+      } catch (err) {
+        throw err;
+      }
     } else {
       console.error(
         `${programName} not found in ${requiredDeploysterConfigurationFile}`
