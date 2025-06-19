@@ -128,11 +128,23 @@ function _extractPortFromSupervisorConf(programBlock) {
  */
 async function isPortActive(port) {
   return new Promise((resolve) => {
-    exec(`lsof -iTCP:${port} -sTCP:LISTEN -n -P`, (error, stdout) => {
-      if (error || !stdout) {
-        return resolve(false); // Error OR Port not in use
+    /** N.B: It's very probable that service can be running under a user with limited
+     * permissions to view the network connections or programs started by other users
+     * Thus i priortized ss -tuln (tcp, udp, listen socket) over lsof. ss tends to require less elevated priviledges
+     * to see system network statistics. Humorously :) ss is a successor to netstat (I think :| don't quote me)
+     */
+    exec(`ss -tuln | grep :${port}`, (ssError, ssStdout) => {
+      if (ssStdout && !ssError) {
+        return resolve(true);
       }
-      return resolve(true); // Port is in use
+
+      // Fallback to lsof if ss didn't return results
+      exec(`lsof -iTCP:${port} -sTCP:LISTEN -n -P`, (lsofError, lsofStdout) => {
+        if (lsofStdout && !lsofError) {
+          return resolve(true);
+        }
+        return resolve(false);
+      });
     });
   });
 }
