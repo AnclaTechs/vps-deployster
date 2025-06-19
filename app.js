@@ -294,7 +294,12 @@ app.post("/deploy", async (req, res) => {
     );
 
     if (pipelineJSON) {
-      await updatePipelineGitHead(projectInView.id, ref_name, commit_hash);
+      var newLogMessage = await updatePipelineGitHead(
+        projectInView.id,
+        ref_name,
+        commit_hash
+      );
+      await addLogToDeploymentRecord(deploymentRecord.id, newLogMessage);
     }
 
     // STORE ARTIFACT

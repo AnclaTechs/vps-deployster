@@ -413,9 +413,14 @@ async function updatePipelineGitHead(projectId, gitBranch, commitHash) {
       `,
         [JSON.stringify(updatedPipelineJSONrecord), projectInView.id]
       );
+
+      return "[INFO] Pipeline Head commit hash updated successfully";
+    } else {
+      return "[WARN] Unable to get project Pipeline JOSN";
     }
   } catch (err) {
     console.log("Error updating pipeline head", err);
+    return `[DEBUG] Error updating pipeline head: ${err}`;
   }
 }
 
