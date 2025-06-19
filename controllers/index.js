@@ -740,7 +740,17 @@ async function getListOfProjectPipelineJson(req, res) {
         .json({ status: false, message: "Error getting project" });
     }
 
-    const pipelineJson = getProjectPipelineJSON(projectInView.pipeline_json);
+    let pipelineJson = getProjectPipelineJSON(projectInView.pipeline_json);
+
+    if (pipelineJson) {
+      pipelineJson = pipelineJson.map((pipeline) => {
+        return {
+          ...pipeline,
+          current_head: String(pipeline.current_head).slice(0, 7),
+          status: true, // [WIP] FIX THIS
+        };
+      });
+    }
 
     return res.json({
       status: true,

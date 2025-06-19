@@ -247,8 +247,8 @@ app.post("/deploy", async (req, res) => {
         const escapedEnvString = envString.replace(/"/g, '\\"');
         const envCommand = `echo "${escapedEnvString}" > .env`;
 
-        // Insert .env creation right before the last command
-        commands.splice(commands.length - 1, 0, envCommand);
+        // Insert .env creation right at the beginning of the command chain
+        commands.unshift(envCommand);
       }
     }
 
@@ -256,6 +256,7 @@ app.post("/deploy", async (req, res) => {
     const rereadCommand = `supervisorctl reread`;
     const updateCommand = `supervisorctl update`;
 
+    // Insert to the end of the last command
     commands.splice(commands.length - 1, 0, rereadCommand, updateCommand);
 
     const fullDeploymentCommandList = [...gitCommands, ...commands];
@@ -302,7 +303,10 @@ app.post("/deploy", async (req, res) => {
         ref_name,
         commit_hash
       );
-      await addLogToDeploymentRecord(deploymentRecord.id, newLogMessage);
+      await addLogToDeploymentRecord(
+        deploymentRecord.id,
+        `\n${newLogMessage}\n`
+      );
     }
 
     // STORE ARTIFACT
