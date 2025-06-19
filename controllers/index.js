@@ -29,6 +29,7 @@ const {
   getProjectFolderNameFromPath,
   getProjectPipelineJSON,
   capitalizeFirstLetter,
+  getPipelinePort,
 } = require("../utils/functools");
 const { DEPLOYMENT_STATUS } = require("../utils/constants");
 const jwtr = new JWTR(redisClient);
@@ -743,11 +744,17 @@ async function getListOfProjectPipelineJson(req, res) {
     let pipelineJson = getProjectPipelineJSON(projectInView.pipeline_json);
 
     if (pipelineJson) {
-      pipelineJson = pipelineJson.map((pipeline) => {
+      pipelineJson = pipelineJson.map(async (pipeline) => {
+        const pipelinePort = await getPipelinePort(
+          `${getProjectFolderNameFromPath(projectInView.app_local_path)}--${
+            pipeline.git_branch
+          }`
+        );
         return {
           ...pipeline,
           current_head: String(pipeline.current_head).slice(0, 7),
-          status: true, // [WIP] FIX THIS
+          tcp_port: pipelinePort,
+          status: pipelinePort ? await isPortActive(pipelinePort) : null,
         };
       });
     }

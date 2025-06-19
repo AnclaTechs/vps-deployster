@@ -54,6 +54,36 @@ async function getProjectPort(projectPath) {
 }
 
 /**
+ * This is different from the getProjectPort above.
+ * Gets the PORT of a running Supervisor program by reading its /proc/<pid>/environ
+ * Only works if the Supervisor-managed process is currently running.
+ *
+ * @param {string} projectName - The Supervisor program name
+ * @returns {Promise<string|null>} - Port number as string, or null if not found or not running
+ */
+async function getPipelinePort(projectName) {
+  try {
+    const statusOutput = await runShell(`supervisorctl status ${projectName}`);
+    const pidMatch = statusOutput.match(/pid (\d+)/);
+    if (!pidMatch) return null;
+
+    const pid = pidMatch[1].trim();
+    const envPath = `/proc/${pid}/environ`;
+
+    if (!fs.existsSync(envPath)) return null;
+
+    const envBuffer = fs.readFileSync(envPath);
+    const envVars = envBuffer.toString().split("\0");
+    const portEntry = envVars.find((v) => v.startsWith("PORT="));
+
+    return portEntry ? portEntry.split("=")[1] : null;
+  } catch (err) {
+    console.error(`getPipelinePort error: ${err.message}`);
+    return null;
+  }
+}
+
+/**
  * Check if a TCP port is currently active (listening).
  * @param {number|string} port - The port number to check.
  * @returns {Promise<boolean>} - Resolves true if port is in use, else false.
@@ -426,6 +456,7 @@ async function updatePipelineGitHead(projectId, gitBranch, commitHash) {
 
 module.exports = {
   getProjectPort,
+  getPipelinePort,
   isPortActive,
   addLogToDeploymentRecord,
   markDeploymentAsComplete,
