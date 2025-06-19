@@ -111,7 +111,7 @@ app.post("/deploy", async (req, res) => {
   // LOCAL GIT HOUSE KEEPING
   const gitCommands = [
     `git stash`,
-    `git stash drop`,
+    `git stash drop 2>/dev/null || true`, // THIS HELPS ENSURE IF NO STASH IS FOUND IT DOESN'T THROW ERROR
     `git fetch`,
     `git checkout ${ref_name}`,
   ];
