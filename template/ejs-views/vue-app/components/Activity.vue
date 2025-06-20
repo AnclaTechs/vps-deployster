@@ -40,7 +40,7 @@
 
       <div v-else-if="events.deploymentActivityLogs?.length">
         <div
-          v-for="(log, index) in events.deploymentActivityLogs"
+          v-for="(log, index) in paginatedLogs"
           :key="index"
           class="border-bottom py-2"
           style="font-family: monospace; font-size: 0.875rem"
@@ -78,7 +78,7 @@
               ><code class="commit-hash">{{
                 String(log.commit_hash).slice(0, 7)
               }}</code>
-              v{{ log.id }}</span
+              v{{ log.sequential_id }}</span
             >
             <div>
               <a
@@ -87,7 +87,7 @@
                   showPastDeploymentLog(
                     log?.log_output,
                     String(log.commit_hash).slice(0, 7),
-                    log.id
+                    log.sequential_id
                   )
                 "
                 >View Build Log</a
@@ -100,6 +100,26 @@
               >
             </div>
           </div>
+        </div>
+
+        <div v-if="totalLogPages > 1" class="mt-3 text-center">
+          <button
+            class="btn btn-sm btn-outline-primary me-2"
+            :disabled="currentActivityLogPage === 1"
+            @click="currentActivityLogPage--"
+          >
+            Previous
+          </button>
+
+          <span>Page {{ currentActivityLogPage }} of {{ totalLogPages }}</span>
+
+          <button
+            class="btn btn-sm btn-outline-primary ms-2"
+            :disabled="currentActivityLogPage === totalLogPages"
+            @click="currentActivityLogPage++"
+          >
+            Next
+          </button>
         </div>
       </div>
 
@@ -175,6 +195,8 @@ export default {
   },
   data() {
     return {
+      currentActivityLogPage: 1,
+      itemsPerPage: 10,
       activeLogContent: "",
       activeLogLineCount: 0,
       pollingInterval: null,
@@ -190,6 +212,17 @@ export default {
   },
   beforeUnmount() {
     this.stopLogStreaming();
+  },
+  computed: {
+    paginatedLogs() {
+      const start = (this.currentActivityLogPage - 1) * this.itemsPerPage;
+      const end = start + this.itemsPerPage;
+      return this.events.deploymentActivityLogs?.slice(start, end) || [];
+    },
+    totalLogPages() {
+      const total = this.events.deploymentActivityLogs?.length || 0;
+      return Math.ceil(total / this.itemsPerPage);
+    },
   },
   methods: {
     startLogStreaming(deploymentId) {
