@@ -128,7 +128,7 @@
       <!---->
 
       <!-- Tabs for Activity and Logs -->
-      <div class="bg-white p-4 rounded shadow-sm">
+      <div class="bg-white p-4 rounded shadow-sm mb-4">
         <ul class="nav nav-tabs mb-3">
           <li class="nav-item">
             <a

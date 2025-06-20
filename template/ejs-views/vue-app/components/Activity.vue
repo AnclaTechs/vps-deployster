@@ -286,7 +286,10 @@ export default {
       Vue.nextTick(() => {
         const container = this.$refs.activityLogsContainer;
         if (container) {
-          container.scrollTop = 0;
+          container.scrollTo({
+            top: 0,
+            behavior: "smooth",
+          });
         }
       });
     },
