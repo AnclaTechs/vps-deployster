@@ -52,13 +52,17 @@ function setupTerminalWSS(server) {
     //   env: process.env,
     // });
     const username = req.username;
-    const ptyProcess = pty.spawn("sudo", ["-u", username, "bash"], {
-      name: "xterm-color",
-      cols: 80,
-      rows: 30,
-      // cwd: `/home/${username}`,
-      env: { ...process.env, HOME: `/home/${username}` },
-    });
+    const ptyProcess = pty.spawn(
+      "sudo",
+      ["-u", username, "bash", "-c", "cd ~ && exec bash"],
+      {
+        name: "xterm-color",
+        cols: 80,
+        rows: 30,
+        // cwd: `/home/${username}`, -- I observed switching here caused permissions conflict as it tries to run before bash is fully "instantiated" instead i'll used bashrc
+        env: { ...process.env, HOME: `/home/${username}` },
+      }
+    );
 
     ptyProcess.onData((data) => {
       ws.send(data);
