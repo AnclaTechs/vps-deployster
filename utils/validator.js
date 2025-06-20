@@ -19,7 +19,7 @@ const updateProjectValidationSchema = Joi.object({
 });
 
 const serverActionValidationSchema = Joi.object({
-  project_id: Joi.string().required(),
+  project_id: Joi.number().required(),
   action: Joi.string().valid("redeploy", "kill").required(),
   stage_uuid: Joi.string().allow(""),
 });
