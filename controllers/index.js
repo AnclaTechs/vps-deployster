@@ -427,7 +427,7 @@ async function getProjectDeploymentActivities(req, res) {
     }
 
     const deploymentActivityLogs = await pool.all(
-      `SELECT actlog.*, dep.commit_hash, dep.log_output, u.email FROM activity_logs actlog INNER JOIN deployments dep ON dep.id = actlog.deployment_id INNER JOIN users u ON u.id = dep.user_id WHERE actlog.project_id = ? ${ACTIVITY_PIPELINE_ADDON_QUERY} ORDER BY actlog.id DESC`,
+      `SELECT actlog.*, dep.commit_hash, dep.log_output, dep.pipeline_stage_uuid, u.email FROM activity_logs actlog INNER JOIN deployments dep ON dep.id = actlog.deployment_id INNER JOIN users u ON u.id = dep.user_id WHERE actlog.project_id = ? ${ACTIVITY_PIPELINE_ADDON_QUERY} ORDER BY actlog.id DESC`,
       [projectId]
     );
 
