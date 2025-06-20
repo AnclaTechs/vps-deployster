@@ -45,8 +45,19 @@
           class="border-bottom py-2"
           style="font-family: monospace; font-size: 0.875rem"
         >
-          <span class="text-muted">{{ formatTimestamp(log.created_at) }}</span
-          ><br />
+          <div
+            class="d-flex flex-row justify-content-between align-items-center"
+          >
+            <span class="text-muted">{{
+              formatTimestamp(log.created_at)
+            }}</span>
+
+            <span v-if="log.pipeline_stage_uuid && !selectedPipelineStage">
+              <i class="fa-duotone fa-solid fa-code-commit me-1"></i>
+              {{ getPipelineNameFromUUID(log.pipeline_stage_uuid) }}</span
+            >
+          </div>
+          <br />
           <span
             ><span class="fw-bold text-muted">{{ log.email }}</span
             >:
@@ -150,6 +161,14 @@ export default {
       required: true,
     },
     events: {
+      type: Object,
+      required: true,
+    },
+    getPipelineNameFromUUID: {
+      type: Function,
+      required: true,
+    },
+    selectedPipelineStage: {
       type: Object,
       required: true,
     },

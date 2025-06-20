@@ -159,6 +159,8 @@
             <ActivityFeed
               :projectId="this.project.id"
               :events="projectDeploymentActivities"
+              :getPipelineNameFromUUID="getPipelineNameFromUUID"
+              :selectedPipelineStage="selectedPipelineStage"
             />
           </div>
 
@@ -936,6 +938,19 @@ export default {
           }
           return false;
         });
+    },
+    getPipelineNameFromUUID(stageUUID) {
+      if (this.pipelineModeIsActive && Array.isArray(this.pipelines)) {
+        const pipelineInView = this.pipelines.find(
+          (data) => data.stage_uuid == stageUUID
+        );
+        if (pipelineInView) {
+          return pipelineInView.git_branch;
+        } else {
+          return null;
+        }
+      }
+      return null;
     },
   },
 };
