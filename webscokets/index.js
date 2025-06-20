@@ -56,7 +56,7 @@ function setupTerminalWSS(server) {
       name: "xterm-color",
       cols: 80,
       rows: 30,
-      cwd: `/home/${username}`,
+      // cwd: `/home/${username}`,
       env: { ...process.env, HOME: `/home/${username}` },
     });
 
