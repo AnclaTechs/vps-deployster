@@ -21,6 +21,7 @@ const updateProjectValidationSchema = Joi.object({
 const serverActionValidationSchema = Joi.object({
   project_id: Joi.string().required(),
   action: Joi.string().valid("redeploy", "kill").required(),
+  stage_uuid: Joi.string().allow(""),
 });
 
 const bashAccessValidationSchema = Joi.object({

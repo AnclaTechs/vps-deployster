@@ -656,7 +656,7 @@ async function spinUpOrKillServer(req, res) {
 
     const user = req.user;
     let projectInView;
-    const { project_id, action } = req.body;
+    const { project_id, action, stage_uuid } = req.body;
 
     try {
       projectInView = await getSingleRow(
@@ -676,7 +676,8 @@ async function spinUpOrKillServer(req, res) {
 
     const response = await serverActionHandler(
       projectInView.app_local_path,
-      action
+      action,
+      stage_uuid ?? null
     );
 
     if (response.status) {
@@ -981,6 +982,15 @@ async function editProjectPipelineJsonRecord(req, res) {
       });
     }
 
+    /**
+     *  ITs IMPERATIVE TO ENSURE THAT git branch name in the supervisor configuration is updated cleanly.
+     * This is because the branch name is critical for the supervisor conf file, and each pipeline stage must maintain it.
+     * If a branch name change of an existing pipeline is required, the existing service must be stopped to avoid control issues.
+     */
+    if (pipelineStageInView.git_branch !== data.git_branch) {
+      await serverActionHandler(projectInView.id, "kill", stage_uuid);
+    }
+
     const updatedPipeline = pipelineJson.map((pipelineStage) => {
       if (pipelineStage.stage_uuid == stage_uuid) {
         return {
@@ -1080,26 +1090,39 @@ async function deleteProjectPipelineJsonRecord(req, res) {
       });
     }
 
-    const updatedPipeline = pipelineJson.filter(
-      (pipelineStage) => pipelineStage.stage_uuid != stage_uuid
+    // KILL ASSOCIATED SERVER
+    const serverActionResponse = await serverActionHandler(
+      projectInView.id,
+      "kill",
+      stage_uuid
     );
 
-    // UPDATE PROJECT DETAILS
-    await pool.run(
-      `
+    if (serverActionResponse) {
+      const updatedPipeline = pipelineJson.filter(
+        (pipelineStage) => pipelineStage.stage_uuid != stage_uuid
+      );
+
+      // UPDATE PROJECT DETAILS
+      await pool.run(
+        `
       UPDATE projects 
       SET 
         pipeline_json = ?
       WHERE id = ?
       `,
-      [JSON.stringify(updatedPipeline), projectInView.id]
-    );
+        [JSON.stringify(updatedPipeline), projectInView.id]
+      );
 
-    return res.json({
-      status: true,
-      message: "Pipeline stage deleted successfully",
-      data: {},
-    });
+      return res.json({
+        status: true,
+        message: "Pipeline stage deleted successfully",
+        data: {},
+      });
+    } else {
+      return res
+        .status(403)
+        .json({ status: false, message: "Error killing server" });
+    }
   } catch (error) {
     console.log({ error });
     return res

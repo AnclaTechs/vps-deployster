@@ -809,7 +809,11 @@ export default {
       axios
         .post(
           `${this.$BACKEND_BASE_URL}/server-action`,
-          { project_id: this.project.id, action },
+          {
+            project_id: this.project.id,
+            action,
+            stage_uuid: selectedPipelineStage.stage_uuid ?? "",
+          },
           this.$store.state.headers
         )
         .then((res) => {

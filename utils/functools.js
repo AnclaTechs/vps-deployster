@@ -428,35 +428,96 @@ function parseSupervisorConfPrograms(confContent) {
   return programs;
 }
 
-async function serverActionHandler(projectPath, actionType) {
-  const conf = checkDeploysterConf(projectPath);
-  if (!conf.status) {
-    return conf;
-  }
-
-  const programName = conf.data.programName;
-  let command;
-  if (actionType === "redeploy") {
-    command = `supervisorctl reread && supervisorctl update && supervisorctl restart ${programName}`;
-  } else if (actionType === "kill") {
-    command = `supervisorctl stop ${programName}`;
-  } else if (actionType === "status") {
-    command = `supervisorctl status ${programName}`;
-  } else {
-    return {
-      status: false,
-      message: 'Invalid action type. Use "redeploy" or "kill".',
-    };
-  }
-
+/**
+ * Handles server actions (redeploy, kill, status) for a project or pipeline stage.
+ * @param {string} projectId - The ID of the project.
+ * @param {string} actionType - The action to perform: 'redeploy', 'kill', or 'status'.
+ * @param {string} [pipelineStageUUID] - Optional UUID of the pipeline stage.
+ * @returns {Promise<Object>} - Result object with status and message.
+ */
+async function serverActionHandler(projectId, actionType, pipelineStageUUID) {
   try {
-    const output = await runShell(command);
-    return {
-      status: true,
-      message: output || `${actionType} executed on ${programName}`,
-    };
-  } catch (err) {
-    return { status: false, message: `Failed to run "${command}": ${err}` };
+    // Fetch project details
+    const project = await getSingleRow("SELECT * FROM projects WHERE id = ?", [
+      projectId,
+    ]);
+    if (!project) {
+      return { status: false, message: "Project not found" };
+    }
+
+    // Get program name based on project path and optional pipeline stage
+    function getProgramName() {
+      const baseName = getProjectFolderNameFromPath(project.app_local_path);
+      if (!pipelineStageUUID) return baseName;
+
+      const pipelineJSON = getProjectPipelineJSON(project.pipeline_json);
+      const stage = pipelineJSON.find(
+        (stage) => stage.stage_uuid === pipelineStageUUID
+      );
+      return stage ? `${baseName}--${stage.git_branch}` : baseName;
+    }
+
+    // Execute supervisor command
+    async function executeCommand(programName, command) {
+      try {
+        const output = await runShell(command);
+        return {
+          status: true,
+          message:
+            output || `${actionType} executed successfully on ${programName}`,
+        };
+      } catch (error) {
+        return {
+          status: false,
+          message: `Failed to run "${command}": ${error}`,
+        };
+      }
+    }
+
+    const programName = getProgramName();
+    const pipelineJSON = getProjectPipelineJSON(project.pipeline_json);
+    const supervisorConfig = checkDeploysterConf(
+      project.app_local_path,
+      pipelineJSON
+    );
+
+    if (!supervisorConfig.status) {
+      return supervisorConfig;
+    }
+
+    // Validate pipeline stage if provided
+    if (pipelineStageUUID) {
+      const pipelineStage = pipelineJSON.find(
+        (stage) => stage.stage_uuid === pipelineStageUUID
+      );
+      if (!pipelineStage) {
+        return { status: false, message: "Pipeline stage not found" };
+      }
+    }
+
+    // Determine command based on action type
+    let command;
+    switch (actionType) {
+      case "redeploy":
+        command = `supervisorctl reread && supervisorctl update && supervisorctl restart ${programName}`;
+        break;
+      case "kill":
+        command = `supervisorctl stop ${programName}`;
+        break;
+      case "status":
+        command = `supervisorctl status ${programName}`;
+        break;
+      default:
+        return {
+          status: false,
+          message: 'Invalid action type. Use "redeploy", "kill", or "status".',
+        };
+    }
+
+    return await executeCommand(programName, command);
+  } catch (error) {
+    console.error(`Error in server action (${actionType}):`, error);
+    return { status: false, message: "Server error" };
   }
 }
 
