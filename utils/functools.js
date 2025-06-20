@@ -517,7 +517,7 @@ async function serverActionHandler(projectId, actionType, pipelineStageUUID) {
     return await executeCommand(programName, command);
   } catch (error) {
     console.error(`Error in server action (${actionType}):`, error);
-    return { status: false, message: "Server error" };
+    return { status: false, message: "Internal server error" };
   }
 }
 

@@ -675,7 +675,7 @@ async function spinUpOrKillServer(req, res) {
     }
 
     const response = await serverActionHandler(
-      projectInView.app_local_path,
+      projectInView.id,
       action,
       stage_uuid ?? null
     );
