@@ -428,7 +428,7 @@ async function getProjectDeploymentActivities(req, res) {
 
     const deploymentActivityLogs = await pool.all(
       `SELECT 
-        ROW_NUMBER() OVER (ORDER BY actlog.id DESC) AS sequential_id, 
+        ROW_NUMBER() OVER (ORDER BY actlog.id) AS sequential_id, 
         actlog.*,
         dep.commit_hash,
         dep.log_output,
