@@ -818,8 +818,8 @@ export default {
         )
         .then((res) => {
           toastr.success(res.data.message);
-          this.getProjectData();
           this.fetchProjectPipelines();
+          this.getProjectData();
         })
         .catch((err) => {
           console.log(err);
