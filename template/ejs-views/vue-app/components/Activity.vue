@@ -38,7 +38,11 @@
         </div>
       </div>
 
-      <div v-else-if="events.deploymentActivityLogs?.length">
+      <div
+        v-else-if="events.deploymentActivityLogs?.length"
+        ref="activityLogsContainer"
+        class="logs-wrapper"
+      >
         <div
           v-for="(log, index) in paginatedLogs"
           :key="index"
@@ -53,7 +57,7 @@
             }}</span>
 
             <span v-if="log.pipeline_stage_uuid && !selectedPipelineStage">
-              <i class="fa-duotone fa-solid fa-code-commit me-1"></i>
+              <i class="fad fa-code-commit fa-sm me-1"></i>
               {{ getPipelineNameFromUUID(log.pipeline_stage_uuid) }}</span
             >
           </div>
@@ -106,7 +110,7 @@
           <button
             class="btn btn-sm btn-outline-primary me-2"
             :disabled="currentActivityLogPage === 1"
-            @click="currentActivityLogPage--"
+            @click="changeLogPage(currentActivityLogPage - 1)"
           >
             Previous
           </button>
@@ -116,7 +120,7 @@
           <button
             class="btn btn-sm btn-outline-primary ms-2"
             :disabled="currentActivityLogPage === totalLogPages"
-            @click="currentActivityLogPage++"
+            @click="changeLogPage(currentActivityLogPage + 1)"
           >
             Next
           </button>
@@ -276,6 +280,15 @@ export default {
         document.getElementById("deploymentLogModal")
       );
       modal.show();
+    },
+    changeLogPage(newPage) {
+      this.currentActivityLogPage = newPage;
+      Vue.nextTick(() => {
+        const container = this.$refs.activityLogsContainer;
+        if (container) {
+          container.scrollTop = 0;
+        }
+      });
     },
     formatTimestamp(ts) {
       return new Date(ts).toLocaleString();
