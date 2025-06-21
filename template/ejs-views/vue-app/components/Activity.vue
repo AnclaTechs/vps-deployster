@@ -100,7 +100,12 @@
                 v-if="log.message?.toLowerCase().includes('succeeded')"
                 href="#"
                 class="ms-2"
-                @click.prevent="openRollbackModal(log.commit_hash)"
+                @click.prevent="
+                  openRollbackModal(
+                    log.commit_hash,
+                    log.pipeline_stage_uuid ?? null
+                  )
+                "
                 >Roll back here</a
               >
             </div>
@@ -182,6 +187,8 @@
         aria-labelledby="rollbackModalLabel"
         aria-hidden="true"
         ref="rollbackModal"
+        data-bs-backdrop="static"
+        data-bs-keyboard="false"
       >
         <div class="modal-dialog">
           <div class="modal-content">
@@ -203,38 +210,54 @@
               </div>
               <div class="mb-2">
                 <strong class="me-2">Pipline:</strong>
-                <span>{{
-                  selectedPipelineStage?.stage_name || "General"
-                }}</span>
+                <span :class="{ 'text-muted': !rollbackPipelineUUIDinView }">
+                  {{
+                    rollbackPipelineUUIDinView
+                      ? getPipelineNameFromUUID(rollbackPipelineUUIDinView)
+                      : "NIL"
+                  }}
+                </span>
               </div>
               <div class="mb-2">
                 <strong class="me-2">Commit Hash:</strong>
-                <span>{{ rollbackCommitHashInView }}</span>
+                <span>
+                  <code class="commit-hash">{{
+                    String(rollbackCommitHashInView).slice(0, 7)
+                  }}</code></span
+                >
               </div>
               <div class="mt-4 alert alert-danger">
                 Rolling back locally to a previous Git branch snapshot can be
                 risky.
-                <p>
+                <p class="mt-3 fw-bold">
                   If the server doesn’t start smoothly afterward, you may need
                   to re-deploy via your GitHub Actions or CI/CD pipeline.
                 </p>
               </div>
             </div>
             <div class="modal-footer">
-              <button
-                type="button"
-                class="btn btn-secondary"
-                data-bs-dismiss="modal"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                class="btn btn-danger"
-                @click="confirmRollback()"
-              >
-                Proceed
-              </button>
+              <div v-if="rollbackIsProcessing">
+                <div
+                  class="spinner-border spinner-border-md"
+                  aria-hidden="true"
+                ></div>
+              </div>
+              <div v-else class="">
+                <button
+                  type="button"
+                  class="btn btn-secondary"
+                  data-bs-dismiss="modal"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-danger"
+                  @click="confirmRollback()"
+                >
+                  Proceed
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -276,6 +299,8 @@ export default {
       deploymentInViewVersionId: "",
       rollbackModalInstance: null,
       rollbackCommitHashInView: null,
+      rollbackPipelineUUIDinView: null,
+      rollbackIsProcessing: false,
     };
   },
   mounted() {
@@ -371,14 +396,15 @@ export default {
       });
       hljs.highlightAll();
     },
-    openRollbackModal(commitHash) {
+    openRollbackModal(commitHash, pipelineStageUUID) {
       if (!this.rollbackModalInstance) {
         this.rollbackModalInstance = new bootstrap.Modal(
           this.$refs.rollbackModal
         );
       }
-      this.rollbackModalInstance.show();
       this.rollbackCommitHashInView = commitHash;
+      this.rollbackPipelineUUIDinView = pipelineStageUUID;
+      this.rollbackModalInstance.show();
     },
     confirmRollback() {
       console.log({
@@ -386,7 +412,8 @@ export default {
         pipeline_stage_uuid: this.selectedPipelineStage?.stage_uuid ?? "",
         commit_hash: this.rollbackCommitHashInView,
       });
-      this.rollbackModalInstance.hide();
+      this.rollbackIsProcessing = true;
+      //this.rollbackModalInstance.hide();
 
       // Trigger rollback logic here
     },
