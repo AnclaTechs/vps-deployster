@@ -157,7 +157,7 @@
         <div v-else>
           <div v-if="tab === 'activity'">
             <ActivityFeed
-              :projectId="this.project.id"
+              :project="this.project"
               :events="projectDeploymentActivities"
               :getPipelineNameFromUUID="getPipelineNameFromUUID"
               :selectedPipelineStage="selectedPipelineStage"

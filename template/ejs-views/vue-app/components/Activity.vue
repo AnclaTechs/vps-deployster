@@ -100,6 +100,7 @@
                 v-if="log.message?.toLowerCase().includes('succeeded')"
                 href="#"
                 class="ms-2"
+                @click.prevent="openRollbackModal(log.commit_hash)"
                 >Roll back here</a
               >
             </div>
@@ -172,6 +173,66 @@
           </div>
         </div>
       </div>
+
+      <!-- Rollback Modal-->
+      <div
+        class="modal fade"
+        id="rollbackModal"
+        tabindex="-1"
+        aria-labelledby="rollbackModalLabel"
+        aria-hidden="true"
+        ref="rollbackModal"
+      >
+        <div class="modal-dialog">
+          <div class="modal-content">
+            <div class="modal-header bg-warning-subtle">
+              <h5 class="modal-title text-warning" id="rollbackModalLabel">
+                ⚠️ Rolling Back Notice
+              </h5>
+              <button
+                type="button"
+                class="btn-close"
+                data-bs-dismiss="modal"
+                aria-label="Close"
+              ></button>
+            </div>
+            <div class="modal-body">
+              <div>
+                Project: <span>{{ project.name }}</span>
+              </div>
+              <div>
+                Pipline:
+                <span>{{
+                  selectedPipelineStage?.stage_name || "General"
+                }}</span>
+              </div>
+              <div class="mt-2 alert alert-danger">
+                Rolling back locally to a previous Git branch snapshot can be
+                risky.
+                <br />
+                If the server doesn’t start smoothly afterward, you may need to
+                re-deploy via your GitHub Actions or CI/CD pipeline.
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button
+                type="button"
+                class="btn btn-secondary"
+                data-bs-dismiss="modal"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                class="btn btn-danger"
+                @click="confirmRollback()"
+              >
+                Proceed
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
     </section>
   </div>
 </template>
@@ -180,8 +241,8 @@
 export default {
   name: "Activity",
   props: {
-    projectId: {
-      type: Number,
+    project: {
+      type: Object,
       required: true,
     },
     events: {
@@ -207,6 +268,8 @@ export default {
       parsedDeploymentLog: null,
       deploymentInViewHash: "",
       deploymentInViewVersionId: "",
+      rollbackModalInstance: null,
+      rollbackCommitHashInView: null,
     };
   },
   mounted() {
@@ -243,7 +306,7 @@ export default {
     async fetchActiveDeploymentLogData(deploymentId) {
       try {
         const res = await axios.get(
-          `${this.$BACKEND_BASE_URL}/project/${this.projectId}/active-deployment-log/${deploymentId}?streamPoint=${this.activeLogLineCount}`,
+          `${this.$BACKEND_BASE_URL}/project/${this.project.id}/active-deployment-log/${deploymentId}?streamPoint=${this.activeLogLineCount}`,
           this.$store.state.headers
         );
 
@@ -301,6 +364,23 @@ export default {
         delete el.dataset.highlighted;
       });
       hljs.highlightAll();
+    },
+    openRollbackModal(commitHash) {
+      if (!this.rollbackModalInstance) {
+        this.rollbackModalInstance = new Modal(this.$refs.rollbackModal);
+      }
+      this.rollbackModalInstance.show();
+      this.rollbackCommitHashInView = commitHash;
+    },
+    confirmRollback() {
+      console.log({
+        project_id: this.project.id,
+        pipeline_stage_uuid: this.selectedPipelineStage?.stage_uuid ?? "",
+        commit_hash: this.rollbackCommitHashInView,
+      });
+      this.rollbackModalInstance.hide();
+
+      // Trigger rollback logic here
     },
   },
 };
