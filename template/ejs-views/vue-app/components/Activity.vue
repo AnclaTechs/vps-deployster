@@ -198,23 +198,26 @@
             </div>
             <div class="modal-body">
               <div class="mb-2">
-                Project: <span>{{ project.name }}</span>
+                <strong class="me-2">Project:</strong>
+                <span>{{ project.name }}</span>
               </div>
               <div class="mb-2">
-                Pipline:
+                <strong class="me-2">Pipline:</strong>
                 <span>{{
                   selectedPipelineStage?.stage_name || "General"
                 }}</span>
               </div>
               <div class="mb-2">
-                Commit Hash: <span>{{ rollbackCommitHashInView }}</span>
+                <strong class="me-2">Commit Hash:</strong>
+                <span>{{ rollbackCommitHashInView }}</span>
               </div>
-              <div class="mt-2 alert alert-danger">
+              <div class="mt-4 alert alert-danger">
                 Rolling back locally to a previous Git branch snapshot can be
                 risky.
-                <br />
-                If the server doesn’t start smoothly afterward, you may need to
-                re-deploy via your GitHub Actions or CI/CD pipeline.
+                <p>
+                  If the server doesn’t start smoothly afterward, you may need
+                  to re-deploy via your GitHub Actions or CI/CD pipeline.
+                </p>
               </div>
             </div>
             <div class="modal-footer">
