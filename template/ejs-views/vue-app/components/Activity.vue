@@ -197,14 +197,17 @@
               ></button>
             </div>
             <div class="modal-body">
-              <div>
+              <div class="mb-2">
                 Project: <span>{{ project.name }}</span>
               </div>
-              <div>
+              <div class="mb-2">
                 Pipline:
                 <span>{{
                   selectedPipelineStage?.stage_name || "General"
                 }}</span>
+              </div>
+              <div class="mb-2">
+                Commit Hash: <span>{{ rollbackCommitHashInView }}</span>
               </div>
               <div class="mt-2 alert alert-danger">
                 Rolling back locally to a previous Git branch snapshot can be
@@ -367,7 +370,9 @@ export default {
     },
     openRollbackModal(commitHash) {
       if (!this.rollbackModalInstance) {
-        this.rollbackModalInstance = new Modal(this.$refs.rollbackModal);
+        this.rollbackModalInstance = new bootstrap.Modal(
+          this.$refs.rollbackModal
+        );
       }
       this.rollbackModalInstance.show();
       this.rollbackCommitHashInView = commitHash;
