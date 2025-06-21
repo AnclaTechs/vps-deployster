@@ -227,8 +227,8 @@
                 >
               </div>
               <div class="mt-4 alert alert-danger">
-                Rolling back locally to a previous Git branch snapshot can be
-                risky.
+                Rolling back locally to a previous Git commit snapshot is a
+                delicate operation.
                 <p class="mt-3 fw-bold">
                   If the server doesn’t start smoothly afterward, you may need
                   to re-deploy via your GitHub Actions or CI/CD pipeline.
@@ -238,7 +238,7 @@
             <div class="modal-footer">
               <div
                 v-if="rollbackIsProcessing"
-                class="d-flex justify-content-center align-items-center"
+                class="w-100 d-flex justify-content-center align-items-center"
               >
                 <div
                   class="spinner-border spinner-border-md"
