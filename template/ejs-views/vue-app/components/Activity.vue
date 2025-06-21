@@ -236,13 +236,16 @@
               </div>
             </div>
             <div class="modal-footer">
-              <div v-if="rollbackIsProcessing">
+              <div
+                v-if="rollbackIsProcessing"
+                class="d-flex justify-content-center align-items-center"
+              >
                 <div
                   class="spinner-border spinner-border-md"
                   aria-hidden="true"
                 ></div>
               </div>
-              <div v-else class="">
+              <div v-else class="d-flex gap-3">
                 <button
                   type="button"
                   class="btn btn-secondary"
