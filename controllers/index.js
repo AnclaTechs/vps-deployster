@@ -16,6 +16,7 @@ const {
   pipelineJsonValidationSchema,
   updateExistingPipelineJsonValidationSchema,
   deleteExistingPipelineJsonValidationSchema,
+  rollbackToCommitValidationSchema,
 } = require("../utils/validator");
 const redisClient = require("../redis");
 const {
@@ -1123,6 +1124,78 @@ async function deleteProjectPipelineJsonRecord(req, res) {
         .status(403)
         .json({ status: false, message: "Error killing server" });
     }
+  } catch (error) {
+    console.log({ error });
+    return res
+      .status(500)
+      .json({ status: false, message: "Internal server error" });
+  }
+}
+
+async function rollbackToCommitSnapshot(req, res) {
+  try {
+    const { error } = rollbackToCommitValidationSchema.validate(req.body);
+    if (error) {
+      res.status(400);
+      res.json({
+        status: false,
+        message: error.details[0].message,
+      });
+      return;
+    }
+
+    const user = req.user;
+    const { project_id, stage_uuid, commit_hash } = req.body;
+    let projectInView;
+
+    try {
+      projectInView = await getSingleRow(
+        `
+        SELECT *
+        FROM projects
+        WHERE user_id = ? AND id = ?
+      `,
+        [user.id, project_id]
+      );
+    } catch (error) {
+      return res
+        .status(403)
+        .json({ status: false, message: "Error getting project" });
+    }
+
+    let pipelineStageInView;
+
+    if (stage_uuid) {
+      const pipelineJson = getProjectPipelineJSON(projectInView.pipeline_json);
+      if (pipelineJson) {
+        pipelineStageInView = pipelineJson.find((stage) => {
+          const { stage_uuid } = stage;
+          return pipelineJson.find(
+            (existingStage) => existingStage.stage_uuid === String(stage_uuid)
+          );
+        });
+
+        if (!pipelineStageInView) {
+          return res.status(403).json({
+            status: false,
+            message: "Unable to reconcile stage UUID",
+          });
+        }
+      } else {
+        return res.status(403).json({
+          status: false,
+          message: "Project has no active pipeline record",
+        });
+      }
+
+      //I STOPPED HERE [WIP]
+    }
+
+    return res.json({
+      status: true,
+      message: "Project details updated successfully",
+      data: {},
+    });
   } catch (error) {
     console.log({ error });
     return res

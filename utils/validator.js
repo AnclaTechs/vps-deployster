@@ -58,6 +58,12 @@ const deleteExistingPipelineJsonValidationSchema = Joi.object({
   stage_uuid: Joi.string().required(),
 });
 
+const rollbackToCommitValidationSchema = Joi.object({
+  project_id: Joi.number().required(),
+  stage_uuid: Joi.string().allow(""),
+  commit_hash: Joi.string().required(),
+});
+
 module.exports = {
   createUserValidationSchema,
   loginValidationSchema,
@@ -67,4 +73,5 @@ module.exports = {
   pipelineJsonValidationSchema,
   updateExistingPipelineJsonValidationSchema,
   deleteExistingPipelineJsonValidationSchema,
+  rollbackToCommitValidationSchema,
 };
