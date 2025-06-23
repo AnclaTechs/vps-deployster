@@ -16,6 +16,7 @@ const {
   editProjectPipelineJsonRecord,
   deleteProjectPipelineJsonRecord,
   getListOfProjectPipelineJson,
+  rollbackToCommitSnapshot,
 } = require("../controllers");
 const { authenticateUser } = require("../middlewares");
 var router = express.Router();
@@ -69,5 +70,11 @@ router.post(
   authenticateUser,
   deleteProjectPipelineJsonRecord
 ); // I CHANGED THIS FROM DELETE TO POST
+
+router.post(
+  "/project/rollback-to-commit",
+  authenticateUser,
+  rollbackToCommitSnapshot
+);
 
 module.exports = router;

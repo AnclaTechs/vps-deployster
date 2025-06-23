@@ -514,6 +514,8 @@ async function serverActionHandler(projectId, actionType, pipelineStageUUID) {
         };
     }
 
+    // IF REDEPLOY INJECT .env AGAIN
+
     return await executeCommand(programName, command);
   } catch (error) {
     console.error(`Error in server action (${actionType}):`, error);

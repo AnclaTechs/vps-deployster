@@ -335,9 +335,9 @@ app.post("/deploy", async (req, res) => {
       await redisClient.set(`job:${job_id}:logs`, newLogMessage);
       await addLogToDeploymentRecord(deploymentRecord.id, newLogMessage);
 
-      // Create archive
+      // Create archive -- excluding git to prevent future conflict
       var newLogMessage = await runShell(
-        `tar -czf ${artifactPath} -C "${cd}" .`
+        `tar -czf ${artifactPath} --exclude=".git" -C "${cd}" .`
       );
       await redisClient.set(`job:${job_id}:logs`, newLogMessage);
       await addLogToDeploymentRecord(deploymentRecord.id, newLogMessage);
