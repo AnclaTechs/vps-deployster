@@ -436,6 +436,7 @@ async function getProjectDeploymentActivities(req, res) {
         dep.commit_hash,
         dep.log_output,
         dep.pipeline_stage_uuid,
+        dep.action,
         u.email 
       FROM activity_logs actlog 
       INNER JOIN deployments dep ON dep.id = actlog.deployment_id

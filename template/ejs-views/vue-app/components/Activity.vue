@@ -97,7 +97,14 @@
                 >View Build Log</a
               >
               <a
-                v-if="log.message?.toLowerCase().includes('succeeded')"
+                v-if="
+                  log.message?.toLowerCase().includes('succeeded') &&
+                  log.action == 'DEPLOY' &&
+                  log.id !==
+                    events.deploymentActivityLogs[
+                      events.deploymentActivityLogs.length - 1
+                    ]?.id
+                "
                 href="#"
                 class="ms-2"
                 @click.prevent="
@@ -412,13 +419,40 @@ export default {
     confirmRollback() {
       console.log({
         project_id: this.project.id,
-        pipeline_stage_uuid: this.selectedPipelineStage?.stage_uuid ?? "",
+        stage_uuid: this.selectedPipelineStage?.stage_uuid ?? "",
         commit_hash: this.rollbackCommitHashInView,
       });
       this.rollbackIsProcessing = true;
-      //this.rollbackModalInstance.hide();
 
-      // Trigger rollback logic here
+      axios
+        .post(
+          `${this.$BACKEND_BASE_URL}/project/rollback-to-commit`,
+          {
+            project_id: this.project.id,
+            stage_uuid: this.selectedPipelineStage?.stage_uuid ?? "",
+            commit_hash: this.rollbackCommitHashInView,
+          },
+          this.$store.state.headers
+        )
+        .then((res) => {
+          toastr.success(res.data.message);
+          this.fetchProjectPipelines();
+          this.getProjectData();
+          //this.rollbackModalInstance.hide();
+        })
+        .catch((err) => {
+          console.log(err);
+          if (err.response?.data) {
+            toastr.error(
+              err.response.data.message || "Error processing request"
+            );
+          } else {
+            toastr.error("Error processing request");
+          }
+        })
+        .finally(() => {
+          this.rollbackIsProcessing = false;
+        });
     },
   },
 };
