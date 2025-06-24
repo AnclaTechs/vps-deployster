@@ -110,12 +110,7 @@
                     log.pipeline_stage_uuid ?? null
                   )
                 "
-                >Roll back here {{ log.id }}
-                {{
-                  events.deploymentActivityLogs[
-                    events.deploymentActivityLogs.length - 1
-                  ]?.id
-                }}</a
+                >Roll back here</a
               >
             </div>
           </div>
