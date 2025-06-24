@@ -100,7 +100,8 @@
                 v-if="
                   log.message?.toLowerCase().includes('succeeded') &&
                   log.action == 'DEPLOY' &&
-                  log.id != events.deploymentActivityLogs[0]?.id
+                  log.id != events.deploymentActivityLogs[0]?.id &&
+                  !isFirstLogForBranch(log)
                 "
                 href="#"
                 class="ms-2"
@@ -402,6 +403,14 @@ export default {
         delete el.dataset.highlighted;
       });
       hljs.highlightAll();
+    },
+    isFirstLogForBranch(log) {
+      if (!this.events.deploymentActivityLogs || !log.pipeline_stage_uuid)
+        return false;
+      const firstIndex = this.events.deploymentActivityLogs.findIndex(
+        (item) => item.pipeline_stage_uuid === log.pipeline_stage_uuid
+      );
+      return this.events.deploymentActivityLogs[firstIndex]?.id === log.id;
     },
     openRollbackModal(commitHash, pipelineStageUUID) {
       if (!this.rollbackModalInstance) {
