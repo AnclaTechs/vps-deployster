@@ -488,8 +488,9 @@ async function serverActionHandler(projectId, actionType, pipelineStageUUID) {
     }
 
     // Validate pipeline stage if provided
+    let pipelineStage;
     if (pipelineStageUUID) {
-      const pipelineStage = pipelineJSON.find(
+      pipelineStage = pipelineJSON.find(
         (stage) => stage.stage_uuid === pipelineStageUUID
       );
       if (!pipelineStage) {
@@ -501,7 +502,7 @@ async function serverActionHandler(projectId, actionType, pipelineStageUUID) {
     let command;
     switch (actionType) {
       case "redeploy":
-        command = `supervisorctl reread && supervisorctl update && supervisorctl restart ${programName}`;
+        command = `supervisorctl stop ${programName} && supervisorctl reread && supervisorctl update && supervisorctl start ${programName}`;
         break;
       case "kill":
         command = `supervisorctl stop ${programName}`;
@@ -517,6 +518,27 @@ async function serverActionHandler(projectId, actionType, pipelineStageUUID) {
     }
 
     // IF REDEPLOY INJECT .env AGAIN
+    if (pipelineStage && Array.isArray(pipelineStage.environment_variables)) {
+      const keyValues = pipelineStage.environment_variables.map((env) => {
+        // SUPPORT lower and upper case
+        const key = env.key ?? env.KEY;
+        const value = env.value ?? env.VALUE;
+        return `${key}=${value}`;
+      });
+
+      const envString = keyValues.join("\n");
+      const escapedEnvString = envString.replace(/"/g, '\\"');
+      const envCommand = `echo "${escapedEnvString}" > .env`;
+
+      try {
+        await runShell(`cd ${project.app_local_path} && ${envCommand}`);
+      } catch (error) {
+        return {
+          status: false,
+          message: `Failed to run : ${error}`,
+        };
+      }
+    }
 
     return await executeCommand(programName, command);
   } catch (error) {
