@@ -9,6 +9,8 @@ const { DEPLOYMENT_STATUS } = require("./constants");
 const { getSingleRow } = require("../database/functions");
 const redisClient = require("../redis");
 
+const isIPAddress = (str) => /\d+\.\d+\.\d+\.\d+/.test(str);
+
 /**
  * Tries to get the port number from a project's .env file or falls back to detecting it from lsof
  * @param {string} projectPath - Absolute path to the project directory
@@ -601,6 +603,7 @@ async function updatePipelineGitHead(projectId, gitBranch, commitHash) {
 }
 
 module.exports = {
+  isIPAddress,
   getProjectPort,
   getPipelinePort,
   isPortActive,
