@@ -100,10 +100,7 @@
                 v-if="
                   log.message?.toLowerCase().includes('succeeded') &&
                   log.action == 'DEPLOY' &&
-                  log.id !=
-                    events.deploymentActivityLogs[
-                      events.deploymentActivityLogs.length - 1
-                    ]?.id
+                  log.id != events.deploymentActivityLogs[0]?.id
                 "
                 href="#"
                 class="ms-2"
