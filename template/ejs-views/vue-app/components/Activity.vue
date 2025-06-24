@@ -100,7 +100,7 @@
                 v-if="
                   log.message?.toLowerCase().includes('succeeded') &&
                   log.action == 'DEPLOY' &&
-                  log.id !==
+                  log.id !=
                     events.deploymentActivityLogs[
                       events.deploymentActivityLogs.length - 1
                     ]?.id
@@ -113,7 +113,12 @@
                     log.pipeline_stage_uuid ?? null
                   )
                 "
-                >Roll back here</a
+                >Roll back here {{ log.id }}
+                {{
+                  events.deploymentActivityLogs[
+                    events.deploymentActivityLogs.length - 1
+                  ]?.id
+                }}</a
               >
             </div>
           </div>
