@@ -108,15 +108,15 @@ async function getPipelinePort(projectPath, programName) {
  * @returns {string|null}
  */
 function _extractPortFromSupervisorConf(programBlock) {
-  // 1. Check environment line for DEPLY_PIPELINE_PORT
+  // 1. Check environment line for DPLY_PIPELINE_PORT
   const envMatch = programBlock.match(
-    /environment=.*?\bDEPLY_PIPELINE_PORT\s*=\s*"?(\d+)"?/i
+    /environment=.*?\bDPLY_PIPELINE_PORT\s*=\s*"?(\d+)"?/i
   );
   if (envMatch) return envMatch[1];
 
-  // 2. Check command line for DEPLY_PIPELINE_PORT assignment (e.g., in bash or yarn start)
+  // 2. Check command line for DPLY_PIPELINE_PORT assignment (e.g., in bash or yarn start)
   const cmdMatch = programBlock.match(
-    /command=.*?\bDEPLY_PIPELINE_PORT\s*=\s*(\d+)/i
+    /command=.*?\bDPLY_PIPELINE_PORT\s*=\s*(\d+)/i
   );
   if (cmdMatch) return cmdMatch[1];
 
