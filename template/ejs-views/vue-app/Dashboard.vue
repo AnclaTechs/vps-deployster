@@ -89,31 +89,81 @@
                     }}</span>
                   </div>
 
-                  <div class="mb-2">
-                    <i class="fad fa-map-marker me-2 text-secondary"></i>
-                    <span class="text-dark"
-                      >TCP Port: {{ project.tcp_port }}</span
-                    >
+                  <div v-if="!project.pipeline_json">
+                    <div class="mb-2">
+                      <i class="fad fa-map-marker me-2 text-secondary"></i>
+                      <span class="text-dark">
+                        TCP Port:
+                        <span>{{ project.tcp_port }}</span>
+                      </span>
+                    </div>
+
+                    <div class="mb-2">
+                      <i class="fad fa-globe me-2 text-secondary"></i>
+                      <span
+                        :class="[
+                          'badge',
+                          project.status ? 'bg-success' : 'bg-danger',
+                        ]"
+                        :aria-label="
+                          project.status
+                            ? 'Project is online'
+                            : 'Project is offline'
+                        "
+                        role="status"
+                      >
+                        {{ project.status ? "Online" : "Offline" }}
+                      </span>
+                    </div>
+
+                    <div class="mb-3">
+                      <i class="fad fa-link me-2 text-secondary"></i>
+                      <span class="text-dark"
+                        >App Link:
+                        <a :href="project.app_url" target="_blank">{{
+                          project.app_url
+                        }}</a></span
+                      >
+                    </div>
                   </div>
 
-                  <div class="mb-2">
-                    <i class="fad fa-globe me-2 text-secondary"></i>
-                    <span class="text-dark"
-                      >Status:
-                      <span class="text-success fw-semibold">{{
-                        project.status
-                      }}</span></span
-                    >
-                  </div>
-
-                  <div class="mb-3">
-                    <i class="fad fa-link me-2 text-secondary"></i>
-                    <span class="text-dark"
-                      >App Link:
-                      <a href="http://velt.energy" target="_blank">{{
-                        project.app_url
-                      }}</a></span
-                    >
+                  <div v-else>
+                    <!--Pipeline table-->
+                    <div class="mb-2">
+                      <table class="table table-hover table-sm table-bordered">
+                        <thead class="table-light">
+                          <tr>
+                            <th>Stage</th>
+                            <th>TCP Port</th>
+                            <th>Status</th>
+                            <th>App Link</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr
+                            v-for="stage in parsePipelineJson(
+                              project.pipeline_json
+                            )"
+                            :key="stage.stage_uuid"
+                          >
+                            <td>{{ stage.stage_name }}</td>
+                            <td>{{ stage.tcp_port ?? "N/A" }}</td>
+                            <td>
+                              <span
+                                :class="[
+                                  'badge',
+                                  stage.status ? 'bg-success' : 'bg-danger',
+                                ]"
+                                role="status"
+                              >
+                                {{ stage.status ? "Online" : "Offline" }}
+                              </span>
+                            </td>
+                            <td>{{ stage.app_url ?? "N/A" }}</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
 
                   <router-link
@@ -359,6 +409,14 @@ module.exports = {
           this.dashboardData = res.data;
           this.dashboardDataIsLoading = false;
         });
+    },
+    parsePipelineJson(pipelineJson) {
+      try {
+        return JSON.parse(pipelineJson || "[]");
+      } catch (error) {
+        console.error("Error parsing pipeline_json:", error);
+        return [];
+      }
     },
     bashLogin() {
       this.deploysterGUIverificationInProgress = true;
