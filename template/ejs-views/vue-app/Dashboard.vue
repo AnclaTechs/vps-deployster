@@ -129,8 +129,11 @@
 
                   <div v-else>
                     <!--Pipeline table-->
-                    <div class="mb-2">
-                      <table class="table table-hover table-sm table-bordered">
+                    <div class="mb-2 table-responsive">
+                      <table
+                        class="table table-hover table-sm table-bordered"
+                        style="font-size: 15px"
+                      >
                         <thead class="table-light">
                           <tr>
                             <th>Stage</th>
@@ -159,7 +162,16 @@
                                 {{ stage.status ? "Online" : "Offline" }}
                               </span>
                             </td>
-                            <td>{{ stage.app_url ?? "N/A" }}</td>
+                            <td>
+                              <a
+                                v-if="stage.app_url"
+                                :href="stage.app_url"
+                                target="_blank"
+                                >{{ stage.app_url }}</a
+                              >
+
+                              <span v-else>N/A</span>
+                            </td>
                           </tr>
                         </tbody>
                       </table>
