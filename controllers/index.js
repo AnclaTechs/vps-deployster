@@ -231,13 +231,45 @@ async function getAllProjects(req, res) {
     );
 
     projects = await Promise.all(
-      projects.map(async (projectData) => ({
-        ...projectData,
-        name: convertFolderNameToDocumentTitle(
-          getProjectFolderNameFromPath(projectData.app_local_path)
-        ),
-        status: await isPortActive(projectData.tcp_port),
-      }))
+      projects.map(async (projectData) => {
+        let pipelineJson = [];
+        if (projectData.pipeline_json) {
+          try {
+            pipelineJson = JSON.parse(projectData.pipeline_json);
+          } catch (error) {
+            console.error(
+              `Error parsing pipeline_json for project ${projectData.id}:`,
+              error
+            );
+          }
+        }
+
+        const updatedPipelineJson = await Promise.all(
+          pipelineJson.map(async (pipeline) => {
+            const pipelinePort = await getPipelinePort(
+              projectData.app_local_path,
+              `${getProjectFolderNameFromPath(projectData.app_local_path)}--${
+                pipeline.git_branch
+              }`
+            );
+            return {
+              ...pipeline,
+              current_head: String(pipeline.current_head).slice(0, 7),
+              tcp_port: pipelinePort,
+              status: pipelinePort ? await isPortActive(pipelinePort) : null,
+            };
+          })
+        );
+
+        return {
+          ...projectData,
+          name: convertFolderNameToDocumentTitle(
+            getProjectFolderNameFromPath(projectData.app_local_path)
+          ),
+          status: await isPortActive(projectData.tcp_port),
+          pipeline_json: JSON.stringify(updatedPipelineJson),
+        };
+      })
     );
 
     return res.json({
