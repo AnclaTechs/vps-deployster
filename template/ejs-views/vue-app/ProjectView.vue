@@ -812,7 +812,7 @@ export default {
           {
             project_id: this.project.id,
             action,
-            stage_uuid: this.selectedPipelineStage.stage_uuid ?? "",
+            stage_uuid: this.selectedPipelineStage?.stage_uuid ?? "",
           },
           this.$store.state.headers
         )
