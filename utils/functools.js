@@ -21,8 +21,8 @@ async function getProjectPort(projectPath) {
     const envPath = path.join(projectPath, ".env");
     if (fs.existsSync(envPath)) {
       const config = dotenv.parse(fs.readFileSync(envPath));
-      if (config.DEPLOYSTER_PORT) {
-        return config.DEPLOYSTER_PORT;
+      if (config.PORT) {
+        return config.PORT;
       }
     }
 
