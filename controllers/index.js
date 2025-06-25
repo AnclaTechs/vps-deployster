@@ -267,7 +267,9 @@ async function getAllProjects(req, res) {
             getProjectFolderNameFromPath(projectData.app_local_path)
           ),
           status: await isPortActive(projectData.tcp_port),
-          pipeline_json: JSON.stringify(updatedPipelineJson),
+          pipeline_json: projectData.pipeline_json
+            ? JSON.stringify(updatedPipelineJson)
+            : null,
         };
       })
     );
