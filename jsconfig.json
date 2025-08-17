@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "Node",
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["template/ejs-views/vue-app/*"]
+    },
+    "allowSyntheticDefaultImports": true,
+    "allowJs": true,
+    "checkJs": false
+  },
+  "vueCompilerOptions": {
+    "globalTypesPath": "./template/ejs-views/vue-app/env.d.ts"
+  },
+  "exclude": ["node_modules", "dist"],
+  "include": ["template/ejs-views/vue-app/**/*", "template/ejs-views/vue-app/**/*.vue"]
+}

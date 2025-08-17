@@ -19,6 +19,17 @@
 
 <template>
   <div class="container">
+    <i
+      :class="[
+        'bi',
+        sidebarIsCollapsed
+          ? 'bi-arrows-expand-vertical'
+          : 'bi-arrows-collapse-vertical',
+        'fs-5',
+      ]"
+      style="cursor: pointer"
+      @click="toggleSidebar()"
+    ></i>
     <div class="mt-4 mb-3">
       <div class="d-flex flex-row justify-content-between align-items-center">
         <router-link
@@ -45,10 +56,19 @@
 
 <script>
 module.exports = {
+  props: {
+    sidebarIsCollapsed: {
+      type: Boolean,
+      required: true,
+    },
+    toggleSidebar: {
+      type: Function,
+      required: true,
+    },
+  },
   data() {
     return {};
   },
-
   methods: {
     signOutUser() {
       axios

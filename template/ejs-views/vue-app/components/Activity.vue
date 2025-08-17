@@ -450,7 +450,7 @@ export default {
           console.log(err);
           if (err.response?.data) {
             toastr.error(
-              err.response.data.message || "Error processing request"
+              err.response.data?.message || "Error processing request"
             );
           } else {
             toastr.error("Error processing request");

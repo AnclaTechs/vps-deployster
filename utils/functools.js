@@ -1,10 +1,12 @@
 const os = require("os");
 const fs = require("fs");
+const net = require("net");
 const moment = require("moment");
+const redis = require("redis");
 const path = require("path");
 const dotenv = require("dotenv");
 const pool = require("../database/index");
-const { exec, execSync } = require("child_process");
+const { exec, execSync, spawn } = require("child_process");
 const { DEPLOYMENT_STATUS } = require("./constants");
 const { getSingleRow } = require("../database/functions");
 const redisClient = require("../redis");
@@ -550,8 +552,13 @@ async function serverActionHandler(projectId, actionType, pipelineStageUUID) {
 async function runShell(cmd) {
   return new Promise((resolve, reject) => {
     exec(cmd, { maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
-      if (err) return reject(stderr || err.message);
-      resolve(stdout);
+      if (err) {
+        const error = new Error(stderr || err.message);
+        error.code = err.code;
+        error.cmd = cmd;
+        return reject(error);
+      }
+      resolve(stdout.trim());
     });
   });
 }
@@ -624,6 +631,94 @@ async function updatePipelineGitHead(projectId, gitBranch, commitHash) {
   }
 }
 
+async function startRedisServer(port = 6379) {
+  return new Promise((resolve) => {
+    const localLogPath = path.join(
+      __dirname,
+      `../logs/deployster-redis${port}.log`
+    );
+
+    // const command = `redis-server --port ${port} --daemonize yes --logfile ${localLogPath}`
+    const command = [
+      "--port",
+      port,
+      "--bind",
+      "0.0.0.0",
+      "--daemonize",
+      "yes",
+      "--logfile",
+      `${localLogPath}`,
+    ];
+
+    /**
+     * @olamigokayphils -  Why did i take the approach above, my assumption is that deployster might be started by a non sudoer, thus
+     * reading the default log file might require sudo access, thus i thought it best to parse to a local folder within deployster
+     * for easir read.
+     */
+
+    const redisProcess = spawn("redis-server", command);
+
+    redisProcess.on("error", () => resolve(false));
+
+    redisProcess.on("close", () => {
+      // After daemonizing, verify connection
+      const client = net.createConnection({ port }, () => {
+        client.write("*1\r\n$4\r\nPING\r\n");
+      });
+
+      client.on("data", (data) => {
+        if (data.toString().includes("PONG")) {
+          resolve(true); // Redis started successfully
+        } else {
+          resolve(false);
+        }
+        client.end();
+      });
+
+      client.on("error", (err) => {
+        resolve(false);
+      });
+    });
+  });
+}
+
+async function killRedisServer(port) {
+  try {
+    const result = await runShell(`pkill -f "redis-server.*${port}" || true`);
+
+    // Verify it's really dead
+    await new Promise((r) => setTimeout(r, 300));
+    try {
+      await runShell(`pgrep -f "redis-server.*${port}"`);
+      return false; // Still running
+    } catch (err) {
+      if (err.code === 1) return true; // Successfully killed
+      throw err;
+    }
+  } catch (err) {
+    if (err.code === null && err.cmd.includes("pkill")) {
+      // pkill succeeded but returned signal code -- which is normal
+      return true;
+    }
+    throw err;
+  }
+}
+
+async function getRedisPassword(host = "127.0.0.1", port = 6379) {
+  const client = redis.createClient({ socket: { host, port } });
+
+  await client.connect();
+
+  try {
+    const res = await client.configGet("requirepass");
+    console.log({ res });
+  } catch (err) {
+    console.error("Error checking password:", err);
+  } finally {
+    await client.quit();
+  }
+}
+
 module.exports = {
   isIPAddress,
   getProjectPort,
@@ -644,4 +739,7 @@ module.exports = {
   serverActionHandler,
   getProjectPipelineJSON,
   updatePipelineGitHead,
+  startRedisServer,
+  killRedisServer,
+  getRedisPassword,
 };

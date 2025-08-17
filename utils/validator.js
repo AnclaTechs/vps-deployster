@@ -64,6 +64,16 @@ const rollbackToCommitValidationSchema = Joi.object({
   commit_hash: Joi.string().required(),
 });
 
+const createRedisInstanceValidationSchema = Joi.object({
+  name: Joi.string().required(),
+  port: Joi.number().required(),
+  description: Joi.string().required(),
+});
+
+const redisClientAdminOptionValidationSchema = Joi.object({
+  action: Joi.string().valid("redeploy", "kill").required(),
+});
+
 module.exports = {
   createUserValidationSchema,
   loginValidationSchema,
@@ -74,4 +84,6 @@ module.exports = {
   updateExistingPipelineJsonValidationSchema,
   deleteExistingPipelineJsonValidationSchema,
   rollbackToCommitValidationSchema,
+  createRedisInstanceValidationSchema,
+  redisClientAdminOptionValidationSchema,
 };

@@ -163,7 +163,7 @@ module.exports = {
           console.log(err.response);
           if (err.response?.data) {
             toastr.error(
-              err.response.data.message || "Error processing request"
+              err.response.data?.message || "Error processing request"
             );
           } else {
             toastr.error("Error processing request");

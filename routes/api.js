@@ -17,6 +17,9 @@ const {
   deleteProjectPipelineJsonRecord,
   getListOfProjectPipelineJson,
   rollbackToCommitSnapshot,
+  redisOverviewData,
+  createNewRedisInstance,
+  redisInstanceAdmin,
 } = require("../controllers");
 const { authenticateUser } = require("../middlewares");
 var router = express.Router();
@@ -75,6 +78,14 @@ router.post(
   "/project/rollback-to-commit",
   authenticateUser,
   rollbackToCommitSnapshot
+);
+
+router.get("/redis/get-overview", authenticateUser, redisOverviewData);
+router.post("/redis/create-instance", authenticateUser, createNewRedisInstance);
+router.post(
+  "/redis/instance/:instanceId",
+  authenticateUser,
+  redisInstanceAdmin
 );
 
 module.exports = router;

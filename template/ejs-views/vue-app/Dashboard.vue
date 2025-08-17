@@ -2,7 +2,6 @@
   <div class="admin-container">
     <!-- Main Content -->
     <main class="content">
-      <headerx></headerx>
       <div class="mt-4 container">
         <div class="row col gap-3">
           <div class="col-sm-12 col-md-5 card card-body rounded">
@@ -448,7 +447,7 @@ module.exports = {
           console.log(err);
           if (err.response?.data) {
             toastr.error(
-              err.response.data.message || "Error processing request"
+              err.response.data?.message || "Error processing request"
             );
           } else {
             toastr.error("Error processing request");

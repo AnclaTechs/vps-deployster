@@ -1,4 +1,4 @@
-const { createApp, ref, defineAsyncComponent } = Vue;
+const { createApp, ref, defineAsyncComponent, defineComponent } = Vue;
 const { createStore } = Vuex;
 const { createRouter, createWebHashHistory } = VueRouter;
 const { loadModule } = window["vue3-sfc-loader"];
@@ -25,10 +25,15 @@ const httpLoaderOption = {
 };
 
 const components = {
+  MainLayout: defineAsyncComponent(() =>
+    loadModule("/vue/layouts/MainLayout.vue", httpLoaderOption)
+  ),
   LoginPage: () => loadModule("/vue/Login.vue", httpLoaderOption),
   RegisterPage: () => loadModule("/vue/Signup.vue", httpLoaderOption),
   DashboardPage: () => loadModule("/vue/Dashboard.vue", httpLoaderOption),
   ProjectViewPage: () => loadModule("/vue/ProjectView.vue", httpLoaderOption),
+  RedisDashboard: () =>
+    loadModule("/vue/pages/RedisDashboard.vue", httpLoaderOption),
 };
 
 const routes = [
@@ -46,6 +51,12 @@ const routes = [
     name: "ProjectView",
     component: components.ProjectViewPage,
     props: true,
+    meta: { requiresAuth: true },
+  },
+  {
+    path: "/redis-dash",
+    name: "RedisDashboard",
+    component: components.RedisDashboard,
     meta: { requiresAuth: true },
   },
 ];
@@ -101,10 +112,27 @@ const store = createStore({
 });
 
 const app = createApp({
+  template: `
+    <router-view v-slot="{ Component }">
+      <transition name="fade">
+        <component
+          :is="shouldUseMainLayoutComponent ? 'MainLayoutComponent' : Component"
+          :primaryChildComponent="shouldUseMainLayoutComponent ? Component : null"
+        />
+      </transition>
+    </router-view>
+  `,
   data() {
     return {};
   },
-  computed: {},
+  components: {
+    MainLayoutComponent: components.MainLayout,
+  },
+  computed: {
+    shouldUseMainLayoutComponent() {
+      return this.$router.currentRoute.value.meta?.requiresAuth === true;
+    },
+  },
   methods: {},
   watch: {},
   mounted() {

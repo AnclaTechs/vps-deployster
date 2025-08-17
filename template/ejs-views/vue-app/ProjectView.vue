@@ -1,7 +1,6 @@
 <template>
   <section>
     <div class="container py-4">
-      <HeaderX></HeaderX>
       <!-- Top Summary Section -->
       <div
         v-if="projectDataIsLoading"
@@ -417,9 +416,6 @@ export default {
         window.$httpLoaderOption
       )
     ),
-    HeaderX: defineAsyncComponent(() =>
-      loadModule("/vue/components/Header.vue", window.$httpLoaderOption)
-    ),
   },
   data() {
     return {
@@ -599,7 +595,7 @@ export default {
           console.log(err);
           if (err.response?.data) {
             toastr.error(
-              err.response.data.message || "Error processing request"
+              err.response.data?.message || "Error processing request"
             );
           } else {
             toastr.error("Error processing request");
@@ -825,7 +821,7 @@ export default {
           console.log(err);
           if (err.response?.data) {
             toastr.error(
-              err.response.data.message || "Error processing request"
+              err.response.data?.message || "Error processing request"
             );
           } else {
             toastr.error("Error processing request");
@@ -848,7 +844,7 @@ export default {
           console.log(err);
           if (err.response?.data) {
             toastr.error(
-              err.response.data.message || "Error processing request"
+              err.response.data?.message || "Error processing request"
             );
           } else {
             toastr.error("Error processing request");
@@ -886,7 +882,7 @@ export default {
           console.log(err);
           if (err.response?.data) {
             toastr.error(
-              err.response.data.message || "Error processing request"
+              err.response.data?.message || "Error processing request"
             );
           } else {
             toastr.error("Error processing request");
@@ -911,7 +907,7 @@ export default {
           console.log(err);
           if (err.response?.data) {
             toastr.error(
-              err.response.data.message || "Error processing request"
+              err.response.data?.message || "Error processing request"
             );
           } else {
             toastr.error("Error processing request");
@@ -936,7 +932,7 @@ export default {
           console.log(err);
           if (err.response?.data) {
             toastr.error(
-              err.response.data.message || "Error processing request"
+              err.response.data?.message || "Error processing request"
             );
           } else {
             toastr.error("Error processing request");

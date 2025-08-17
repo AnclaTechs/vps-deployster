@@ -1,5 +1,6 @@
 const fs = require("fs").promises;
 const path = require("path");
+const net = require("net");
 const moment = require("moment");
 const { v4: uuidv4 } = require("uuid");
 const bcrypt = require("bcrypt");
@@ -17,6 +18,8 @@ const {
   updateExistingPipelineJsonValidationSchema,
   deleteExistingPipelineJsonValidationSchema,
   rollbackToCommitValidationSchema,
+  createRedisInstanceValidationSchema,
+  redisClientAdminOptionValidationSchema,
 } = require("../utils/validator");
 const redisClient = require("../redis");
 const {
@@ -33,9 +36,14 @@ const {
   getPipelinePort,
   addLogToDeploymentRecord,
   markDeploymentAsComplete,
+  runShell,
+  startRedisServer,
+  killRedisServer,
 } = require("../utils/functools");
 const { DEPLOYMENT_STATUS } = require("../utils/constants");
 const jwtr = new JWTR(redisClient);
+const DEPLOYSTER_VPS_PUBLIC_IP =
+  process.env.DEPLOYSTER_VPS_PUBLIC_IP || "127.0.0.1";
 
 async function createUser(req, res) {
   try {
@@ -1494,6 +1502,265 @@ async function rollbackToCommitSnapshot(req, res) {
   }
 }
 
+async function redisOverviewData(req, res) {
+  try {
+    // CHECK REDIS IS INSTALLED
+    const DEFAULT_PORT = 6379;
+    const command = "redis-server --version";
+    let redisAvailable;
+
+    try {
+      const output = await runShell(command);
+      redisAvailable = true;
+    } catch (err) {
+      redisAvailable = false;
+      //console.error("Redis is not installed or not in PATH.");
+    }
+
+    // CHECK DEFAULT PORT IS ONLINE
+    async function redisPortIsOnline(port) {
+      return new Promise((resolve, reject) => {
+        // const portIsOnlineCommand = `lsof -i :${DEFAULT_PORT} -sTCP:LISTEN -nP`;
+
+        const client = net.createConnection({ port }, () => {
+          // Send Redis PING command using RESP format
+          client.write("*1\r\n$4\r\nPING\r\n");
+        });
+
+        client.on("data", (data) => {
+          const response = data.toString();
+          if (response.includes("PONG")) {
+            resolve(true); // Redis is responding correctly
+          } else {
+            resolve(false); //PORT is active, but it's not Redis
+          }
+          client.end();
+        });
+
+        client.on("error", (err) => {
+          resolve(false); // PORT unreachable / Offline
+        });
+
+        client.on("end", () => {});
+
+        client.setTimeout(2000, () => {
+          // Timeout after 2 seconds
+          client.destroy();
+          resolve(false);
+        });
+      });
+    }
+
+    let servers = [
+      {
+        id: 0,
+        name: "Default Redis",
+        port: DEFAULT_PORT,
+        portIsActive: await redisPortIsOnline(DEFAULT_PORT),
+        metadata:
+          "Redis uses port 6379 as its default TCP port for client connections. This is the standard port the Redis server listens on unless explicitly configured otherwise",
+        created_at: null,
+        uri: `redis://${DEPLOYSTER_VPS_PUBLIC_IP}:${DEFAULT_PORT}`,
+        logPath: "/var/log/redis/redis-server.log",
+      },
+    ];
+
+    const redisServers = await pool.all(`
+      SELECT 
+        id,
+        name,
+        port,
+        metadata,
+        created_at
+      FROM managed_redis_server
+    `);
+
+    await Promise.all(
+      redisServers.map(async (data) => {
+        servers.push({
+          ...data,
+          portIsActive: await redisPortIsOnline(data.port),
+          uri: `redis://${DEPLOYSTER_VPS_PUBLIC_IP}:${data.port}`,
+          logPath: path.join(
+            __dirname,
+            `../logs/deployster-redis${data.port}.log`
+          ),
+        });
+      })
+    );
+
+    return res.json({
+      status: true,
+      message: "Redis overview returned successfully",
+      data: {
+        redisAvailable,
+        servers,
+        count: servers.length,
+      },
+    });
+  } catch (error) {
+    console.log({ error });
+    return res
+      .status(500)
+      .json({ status: false, message: "Internal server error" });
+  }
+}
+
+async function createNewRedisInstance(req, res) {
+  try {
+    const { error } = createRedisInstanceValidationSchema.validate(req.body);
+    if (error) {
+      res.status(400);
+      return res.json({
+        status: false,
+        message: error.details[0].message,
+      });
+    }
+
+    const user = req.user;
+    const DEFAULT_REDIS_PORT = 6379;
+    const { name, port, description } = req.body;
+
+    if (port == DEFAULT_REDIS_PORT) {
+      return res.status(403).json({
+        status: false,
+        message:
+          "Default redis port cannot be recreated. Restart instance instead",
+      });
+    }
+
+    // ACERTAIN THAT PORT HAS NOT BEEN REGISTERED PRIOR
+
+    try {
+      const existingRecord = await getSingleRow(
+        `
+        SELECT *
+        FROM managed_redis_server
+        WHERE port = ?
+      `,
+        [port]
+      );
+
+      if (existingRecord) {
+        return res.status(403).json({
+          status: false,
+          message: `Port: ${port} already created. Restart instance instead`,
+        });
+      }
+    } catch (error) {
+      //PASS
+    }
+
+    // UPDATE PROJECT DETAILS
+    await pool.run(
+      `INSERT INTO managed_redis_server (name, port, metadata) VALUES (?, ?, ?) `,
+      [name, port, description]
+    );
+
+    const createdInstance = await startRedisServer(port);
+
+    if (createdInstance) {
+      return res.json({
+        status: true,
+        message: "Redis instance created and started successfully",
+        data: {},
+      });
+    } else {
+      return res.json({
+        status: true,
+        message: "Redis instance created. Error starting successfully",
+        data: {},
+      });
+    }
+  } catch (error) {
+    console.log({ error });
+    return res
+      .status(500)
+      .json({ status: false, message: "Internal server error" });
+  }
+}
+
+async function redisInstanceAdmin(req, res) {
+  try {
+    const { error } = redisClientAdminOptionValidationSchema.validate(req.body);
+    if (error) {
+      res.status(400);
+      return res.json({
+        status: false,
+        message: error.details[0].message,
+      });
+    }
+
+    const user = req.user;
+    const redisInstanceId = req.params.instanceId;
+    const { action } = req.body;
+    let redisInstanceInView;
+
+    // GET REDIS INSTANCE
+    if (redisInstanceId == 0) {
+      // ID Zero (0) or null is dedicated to Default PORT
+      const DEFAULT_PORT = 6379;
+      redisInstanceInView = {
+        port: DEFAULT_PORT,
+      };
+    } else {
+      try {
+        redisInstanceInView = await getSingleRow(
+          `
+        SELECT *
+        FROM managed_redis_server
+        WHERE id = ?
+      `,
+          [redisInstanceId]
+        );
+      } catch (error) {
+        return res.status(403).json({
+          status: false,
+          message: `Error fetching Redis instance with ID: ${redisInstanceId}`,
+        });
+      }
+    }
+
+    if (action == "redeploy") {
+      const createdInstance = await startRedisServer(redisInstanceInView.port);
+
+      if (createdInstance) {
+        return res.json({
+          status: true,
+          message: "Redis instance created and started successfully",
+          data: {},
+        });
+      } else {
+        return res.json({
+          status: true,
+          message: "Redis instance created. Error starting successfully",
+          data: {},
+        });
+      }
+    } else if (action == "kill") {
+      const response = await killRedisServer(redisInstanceInView.port);
+      console.log({ response });
+      if (response) {
+        return res.json({
+          status: true,
+          message: "Redis instance stopped successfully",
+          data: {},
+        });
+      }
+      return res.json({
+        status: true,
+        message: "Error stopping service",
+        data: {},
+      });
+    }
+  } catch (error) {
+    console.log({ error });
+    return res
+      .status(500)
+      .json({ status: false, message: "Internal server error" });
+  }
+}
+
 module.exports = {
   createUser,
   loginUser,
@@ -1512,4 +1779,7 @@ module.exports = {
   editProjectPipelineJsonRecord,
   deleteProjectPipelineJsonRecord,
   rollbackToCommitSnapshot,
+  redisOverviewData,
+  createNewRedisInstance,
+  redisInstanceAdmin,
 };
