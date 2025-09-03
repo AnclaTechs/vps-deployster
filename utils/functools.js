@@ -5,10 +5,9 @@ const moment = require("moment");
 const redis = require("redis");
 const path = require("path");
 const dotenv = require("dotenv");
-const pool = require("../database/index");
+const { pool, getSingleRow } = require("@anclatechs/sql-buns");
 const { exec, execSync, spawn } = require("child_process");
 const { DEPLOYMENT_STATUS } = require("./constants");
-const { getSingleRow } = require("../database/functions");
 const redisClient = require("../redis");
 
 const isIPAddress = (str) => /\d+\.\d+\.\d+\.\d+/.test(str);

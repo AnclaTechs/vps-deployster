@@ -1,7 +1,7 @@
 const JWTR = require("jwt-redis").default;
+const { getSingleRow } = require("@anclatechs/sql-buns");
 const redisClient = require("../redis");
 const jwtr = new JWTR(redisClient);
-const { getSingleRow } = require("../database/functions");
 
 async function verifyToken(token) {
   if (!token) throw new Error("No token provided");

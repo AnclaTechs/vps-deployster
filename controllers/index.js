@@ -5,9 +5,11 @@ const moment = require("moment");
 const { v4: uuidv4 } = require("uuid");
 const bcrypt = require("bcrypt");
 const JWTR = require("jwt-redis").default;
-const pool = require("../database/index");
-const { RecordDoesNotExist } = require("../database/error");
-const { getSingleRow } = require("../database/functions");
+const {
+  pool,
+  getSingleRow,
+  RecordDoesNotExist,
+} = require("@anclatechs/sql-buns");
 const {
   createUserValidationSchema,
   loginValidationSchema,
