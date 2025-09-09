@@ -83,6 +83,173 @@ app.post("/deploy", async (req, res) => {
   const job_id = Date.now().toString();
   const { cd, commands, commit_hash, ref_name } = req.body;
 
+  // Helper to start the deployment (used for immediate and queued runs)
+  async function performDeployment() {
+    try {
+      // CREATE DEPLOYMENT RECORD LOG
+      try {
+        deploymentRecord = await createRowAndReturn(
+          "deployments",
+          "INSERT INTO deployments (user_id, project_id, commit_hash, pipeline_stage_uuid, action, status, started_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+          [
+            user.id,
+            projectInView.id,
+            commit_hash,
+            pipelineJSON
+              ? pipelineJSON.filter((pipeline) => pipeline.git_branch == ref_name)[0]?.stage_uuid
+              : null,
+            "DEPLOY",
+            "RUNNING",
+            deploymentTimestamp,
+          ]
+        );
+      } catch (error) {
+        console.error("Error recording deployment log:", error);
+      }
+
+      await redisClient.set(`job:${job_id}:status`, "running");
+
+      // VALIDATE LAST COMMAND
+      const localCommands = [...commands];
+      const lastCommand = localCommands[localCommands.length - 1] || "";
+      if (!/supervisorctl\s+(start|restart)\s+[\w\-]+/.test(lastCommand)) {
+        const errorOutput =
+          "[ERROR] Last command must be a 'supervisorctl start|restart'. Aborting...\n";
+        await redisClient.set(`job:${job_id}:status`, "failed");
+        await redisClient.append(`job:${job_id}:logs`, errorOutput);
+        if (deploymentRecord) {
+          await addLogToDeploymentRecord(deploymentRecord.id, errorOutput);
+          await markDeploymentAsComplete(
+            deploymentRecord.id,
+            DEPLOYMENT_STATUS.FAILED,
+            null,
+            deploymentLockKey
+          );
+        }
+        return;
+      }
+
+      // INJECT ENV ENVIRONMENT
+      if (pipelineJSON && Array.isArray(pipelineJSON)) {
+        const pipelineStage = pipelineJSON.find((p) => p.git_branch === ref_name);
+
+        if (pipelineStage && Array.isArray(pipelineStage.environment_variables)) {
+          const keyValues = pipelineStage.environment_variables.map((env) => {
+            const key = env.key ?? env.KEY;
+            const value = env.value ?? env.VALUE;
+            return `${key}=${value}`;
+          });
+
+          const envString = keyValues.join("\n");
+          const escapedEnvString = envString.replace(/"/g, '\\"');
+          const envCommand = `echo "${escapedEnvString}" > .env`;
+          localCommands.unshift(envCommand);
+        }
+      }
+
+      // Append additional supervisor commands
+      const rereadCommand = `supervisorctl reread`;
+      const updateCommand = `supervisorctl update`;
+      localCommands.splice(localCommands.length - 1, 0, rereadCommand, updateCommand);
+
+      const fullDeploymentCommandList = [...gitCommands, ...localCommands];
+
+      for (let i = 0; i < fullDeploymentCommandList.length; i++) {
+        const command = `cd ${cd} && ${fullDeploymentCommandList[i]}`;
+        const formattedCommand = `\n[${i + 1}] $ ${fullDeploymentCommandList[i]}\n`;
+        await redisClient.append(`job:${job_id}:logs`, formattedCommand);
+
+        try {
+          const output = await runShell(command);
+          await redisClient.append(`job:${job_id}:logs`, output);
+          if (deploymentRecord)
+            await addLogToDeploymentRecord(deploymentRecord.id, output);
+        } catch (err) {
+          const errorOutput = `[ERROR] ${err}\n`;
+          await redisClient.append(`job:${job_id}:logs`, errorOutput);
+          await redisClient.set(`job:${job_id}:status`, "failed");
+          if (deploymentRecord) {
+            await addLogToDeploymentRecord(deploymentRecord.id, errorOutput);
+            await markDeploymentAsComplete(
+              deploymentRecord.id,
+              DEPLOYMENT_STATUS.FAILED,
+              null,
+              deploymentLockKey
+            );
+          }
+          return;
+        }
+      }
+
+      await redisClient.set(`job:${job_id}:status`, "complete");
+      await markDeploymentAsComplete(
+        deploymentRecord.id,
+        DEPLOYMENT_STATUS.COMPLETED,
+        null,
+        null // HOLD ON SUCCESSFUL LOCK-KEY for a moment. It's passed a little later
+      );
+
+      if (pipelineJSON) {
+        var newLogMessage = await updatePipelineGitHead(
+          projectInView.id,
+          ref_name,
+          commit_hash
+        );
+        await addLogToDeploymentRecord(
+          deploymentRecord.id,
+          `\n${newLogMessage}\n`
+        );
+      }
+
+      // STORE ARTIFACT
+      var newLogMessage = "\nCompressing artifact\n";
+      await redisClient.set(`job:${job_id}:logs`, newLogMessage);
+      await addLogToDeploymentRecord(deploymentRecord.id, newLogMessage);
+      const cleanCdPath = cd
+        .replace(/^\/*|\/*$/g, "")
+        .replace(/[^\w\-\/]/g, "_")
+        .replace(/\//g, "_");
+      const artifactBase = path.join(__dirname, "deploy-artifacts");
+      const artifactDir = path.join(artifactBase, cleanCdPath);
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+      const shortcommitHash = commit_hash.slice(0, 8);
+      const artifactPath = path.join(
+        artifactDir,
+        `deploy-${timestamp}-${shortcommitHash}.tar.gz`
+      );
+
+      try {
+        var newLogMessage = await runShell(`mkdir -p ${artifactDir}`);
+        await redisClient.set(`job:${job_id}:logs`, newLogMessage);
+        await addLogToDeploymentRecord(deploymentRecord.id, newLogMessage);
+
+        var newLogMessage = await runShell(
+          `tar -czf ${artifactPath} --exclude=".git" -C "${cd}" .`
+        );
+        await redisClient.set(`job:${job_id}:logs`, newLogMessage);
+        await addLogToDeploymentRecord(deploymentRecord.id, newLogMessage);
+
+        var newLogMessage = `\n[INFO] Artifact created at ${artifactPath}\n`;
+        await redisClient.append(`job:${job_id}:logs`, newLogMessage);
+        await addLogToDeploymentRecord(deploymentRecord.id, newLogMessage);
+
+        await markDeploymentAsComplete(
+          deploymentRecord.id,
+          DEPLOYMENT_STATUS.COMPLETED,
+          artifactPath,
+          deploymentLockKey,
+          { createActivityLog: false }
+        );
+      } catch (err) {
+        var newLogMessage = `[WARN] Artifact generation failed: ${err.message}\n`;
+        await redisClient.append(`job:${job_id}:logs`, newLogMessage);
+        await addLogToDeploymentRecord(deploymentRecord.id, newLogMessage);
+      }
+    } catch (e) {
+      console.error("Deployment error:", e);
+    }
+  }
+
   if (!commit_hash) {
     // FOR version 1.0 BACKWARD COMPACTIBILITY
     await redisClient.set(`job:${job_id}:status`, "queued");
@@ -155,9 +322,26 @@ app.post("/deploy", async (req, res) => {
         );
 
         if (!acquired) {
-          return res.status(409).json({
-            error: "Project has another deployment activity in progress.",
-          });
+          // Queue this deployment; respond immediately and start polling for the lock
+          await redisClient.set(`job:${job_id}:status`, "queued");
+          await redisClient.del(`job:${job_id}:logs`);
+          res.json({ job_id, queued: true, message: "Another deployment is running; this job is queued." });
+
+          (async () => {
+            while (true) {
+              const got = await redisClient.set(
+                deploymentLockKey,
+                "locked",
+                "NX",
+                "EX",
+                600
+              );
+              if (got) break;
+              await new Promise((r) => setTimeout(r, 3000));
+            }
+            await performDeployment();
+          })();
+          return;
         }
       } catch (error) {
         throw Error("Error getting deployment lock key");
@@ -187,182 +371,15 @@ app.post("/deploy", async (req, res) => {
     console.error("Error processing project metadata:", error);
   }
 
-  try {
-    // CREATE DEPLOYMENT RECORD LOG
-    deploymentRecord = await createRowAndReturn(
-      "deployments",
-      "INSERT INTO deployments (user_id, project_id, commit_hash, pipeline_stage_uuid, action, status, started_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-      [
-        user.id,
-        projectInView.id,
-        commit_hash,
-        pipelineJSON
-          ? pipelineJSON.filter(
-              (pipeline) => pipeline.git_branch == ref_name
-            )[0]?.stage_uuid
-          : null,
-        "DEPLOY",
-        "RUNNING",
-        deploymentTimestamp,
-      ]
-    );
-  } catch (error) {
-    console.error("Error recording deployment log:", error);
-  }
+  // Deployment record is created when the job actually starts running
 
   await redisClient.set(`job:${job_id}:status`, "queued");
   await redisClient.del(`job:${job_id}:logs`);
 
   res.json({ job_id });
 
-  (async () => {
-    await redisClient.set(`job:${job_id}:status`, "running");
-
-    // VALIDATE LAST COMMAND
-    // Check that the last command includes supervisorctl start or supervisorctl restart:
-    const lastCommand = commands[commands.length - 1] || "";
-    if (!/supervisorctl\s+(start|restart)\s+[\w\-]+/.test(lastCommand)) {
-      const errorOutput =
-        "[ERROR] Last command must be a 'supervisorctl start|restart'. Aborting...\n";
-      await redisClient.set(`job:${job_id}:status`, "failed");
-      await redisClient.append(`job:${job_id}:logs`, errorOutput);
-      if (deploymentRecord) {
-        await addLogToDeploymentRecord(deploymentRecord.id, errorOutput);
-        await markDeploymentAsComplete(
-          deploymentRecord.id,
-          DEPLOYMENT_STATUS.FAILED,
-          null,
-          deploymentLockKey
-        );
-      }
-      return;
-    }
-
-    // INJECT ENV ENVIRONMENT
-    if (pipelineJSON && Array.isArray(pipelineJSON)) {
-      const pipelineStage = pipelineJSON.find((p) => p.git_branch === ref_name);
-
-      if (pipelineStage && Array.isArray(pipelineStage.environment_variables)) {
-        const keyValues = pipelineStage.environment_variables.map((env) => {
-          // SUPPORT lower and upper case
-          const key = env.key ?? env.KEY;
-          const value = env.value ?? env.VALUE;
-          return `${key}=${value}`;
-        });
-
-        const envString = keyValues.join("\n");
-        const escapedEnvString = envString.replace(/"/g, '\\"');
-        const envCommand = `echo "${escapedEnvString}" > .env`;
-
-        // Insert .env creation right at the beginning of the command chain
-        commands.unshift(envCommand);
-      }
-    }
-
-    // Append additional supervisor commands
-    const rereadCommand = `supervisorctl reread`;
-    const updateCommand = `supervisorctl update`;
-
-    // Insert to the end of the last command
-    commands.splice(commands.length - 1, 0, rereadCommand, updateCommand);
-
-    const fullDeploymentCommandList = [...gitCommands, ...commands];
-
-    for (let i = 0; i < fullDeploymentCommandList.length; i++) {
-      const command = `cd ${cd} && ${fullDeploymentCommandList[i]}`;
-      const formattedCommand = `\n[${i + 1}] $ ${
-        fullDeploymentCommandList[i]
-      }\n`;
-      await redisClient.append(`job:${job_id}:logs`, formattedCommand);
-
-      try {
-        const output = await runShell(command);
-        await redisClient.append(`job:${job_id}:logs`, output);
-        if (deploymentRecord)
-          await addLogToDeploymentRecord(deploymentRecord.id, output);
-      } catch (err) {
-        const errorOutput = `[ERROR] ${err}\n`;
-        await redisClient.append(`job:${job_id}:logs`, errorOutput);
-        await redisClient.set(`job:${job_id}:status`, "failed");
-        if (deploymentRecord) {
-          await addLogToDeploymentRecord(deploymentRecord.id, errorOutput);
-          await markDeploymentAsComplete(
-            deploymentRecord.id,
-            DEPLOYMENT_STATUS.FAILED,
-            null,
-            deploymentLockKey
-          );
-        }
-        return;
-      }
-    }
-    await redisClient.set(`job:${job_id}:status`, "complete");
-    await markDeploymentAsComplete(
-      deploymentRecord.id,
-      DEPLOYMENT_STATUS.COMPLETED,
-      null,
-      null // HOLD ON SUCCESSFUL LOCK-KEY for a moment. It's passed a little later
-    );
-
-    if (pipelineJSON) {
-      var newLogMessage = await updatePipelineGitHead(
-        projectInView.id,
-        ref_name,
-        commit_hash
-      );
-      await addLogToDeploymentRecord(
-        deploymentRecord.id,
-        `\n${newLogMessage}\n`
-      );
-    }
-
-    // STORE ARTIFACT
-    var newLogMessage = "\nCompressing artifact\n";
-    await redisClient.set(`job:${job_id}:logs`, newLogMessage);
-    await addLogToDeploymentRecord(deploymentRecord.id, newLogMessage);
-    const cleanCdPath = cd
-      .replace(/^\/*|\/*$/g, "") // Remove leading/trailing slashes
-      .replace(/[^\w\-\/]/g, "_") // Replace non-word, non-hyphen, non-slash characters with underscore _
-      .replace(/\//g, "_"); // Replace slash with underscore _
-    const artifactBase = path.join(__dirname, "deploy-artifacts");
-    const artifactDir = path.join(artifactBase, cleanCdPath);
-    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-    const shortcommitHash = commit_hash.slice(0, 8);
-    const artifactPath = path.join(
-      artifactDir,
-      `deploy-${timestamp}-${shortcommitHash}.tar.gz`
-    );
-
-    try {
-      // await fs.mkdir(artifactDir, { recursive: true });
-      var newLogMessage = await runShell(`mkdir -p ${artifactDir}`);
-      await redisClient.set(`job:${job_id}:logs`, newLogMessage);
-      await addLogToDeploymentRecord(deploymentRecord.id, newLogMessage);
-
-      // Create archive -- excluding git to prevent future conflict
-      var newLogMessage = await runShell(
-        `tar -czf ${artifactPath} --exclude=".git" -C "${cd}" .`
-      );
-      await redisClient.set(`job:${job_id}:logs`, newLogMessage);
-      await addLogToDeploymentRecord(deploymentRecord.id, newLogMessage);
-
-      var newLogMessage = `\n[INFO] Artifact created at ${artifactPath}\n`;
-      await redisClient.append(`job:${job_id}:logs`, newLogMessage);
-      await addLogToDeploymentRecord(deploymentRecord.id, newLogMessage);
-
-      await markDeploymentAsComplete(
-        deploymentRecord.id,
-        DEPLOYMENT_STATUS.COMPLETED,
-        artifactPath,
-        deploymentLockKey,
-        { createActivityLog: false } //skip Log regeneration
-      );
-    } catch (err) {
-      var newLogMessage = `[WARN] Artifact generation failed: ${err.message}\n`;
-      await redisClient.append(`job:${job_id}:logs`, newLogMessage);
-      await addLogToDeploymentRecord(deploymentRecord.id, newLogMessage);
-    }
-  })();
+  // Start deployment in background for immediate (non-queued) case
+  performDeployment();
 });
 
 app.get("/status/:job_id", async (req, res) => {

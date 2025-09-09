@@ -1,4 +1,5 @@
 const fs = require("fs").promises;
+const fsSync = require("fs");
 const path = require("path");
 const net = require("net");
 const moment = require("moment");
@@ -9,6 +10,7 @@ const {
   pool,
   getSingleRow,
   RecordDoesNotExist,
+  createRowAndReturn,
 } = require("@anclatechs/sql-buns");
 const {
   createUserValidationSchema,
@@ -41,6 +43,7 @@ const {
   runShell,
   startRedisServer,
   killRedisServer,
+  updatePipelineGitHead,
 } = require("../utils/functools");
 const { DEPLOYMENT_STATUS } = require("../utils/constants");
 const jwtr = new JWTR(redisClient);
@@ -1203,6 +1206,250 @@ async function rollbackToCommitSnapshot(req, res) {
     const deploymentTimestamp = moment().format("YYYY-MM-DD HH:mm:ss");
     const job_id = Date.now().toString();
 
+    async function performRollback() {
+      try {
+        await redisClient.set(`job:${job_id}:status`, "running");
+
+        // CREATE DEPLOYMENT RECORD LOG
+        try {
+          deploymentRecord = await createRowAndReturn(
+            "deployments",
+            "INSERT INTO deployments (user_id, project_id, commit_hash, pipeline_stage_uuid, action, status, started_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            [
+              user.id,
+              projectInView.id,
+              commit_hash,
+              stage_uuid ?? null,
+              "ROLLBACK",
+              "RUNNING",
+              deploymentTimestamp,
+            ]
+          );
+          var newLogMessage = "\n[INFO] Deployment record created\n";
+          await redisClient.append(`job:${job_id}:logs`, newLogMessage);
+          await addLogToDeploymentRecord(deploymentRecord.id, newLogMessage);
+        } catch (error) {
+          var errorOutput = `[ERROR] Error recording deployment log: ${error}`;
+          await redisClient.append(`job:${job_id}:logs`, errorOutput);
+          await redisClient.set(`job:${job_id}:status`, "failed");
+          if (deploymentRecord) await addLogToDeploymentRecord(deploymentRecord.id, errorOutput);
+          await markDeploymentAsComplete(
+            deploymentRecord?.id,
+            DEPLOYMENT_STATUS.FAILED,
+            null,
+            deploymentLockKey
+          );
+          return;
+        }
+
+        if (stage_uuid) {
+          const pipelineJson = getProjectPipelineJSON(projectInView.pipeline_json);
+          if (pipelineJson) {
+            pipelineStageInView = pipelineJson.find((stage) => {
+              const { stage_uuid } = stage;
+              return pipelineJson.find(
+                (existingStage) => existingStage.stage_uuid === String(stage_uuid)
+              );
+            });
+
+            if (!pipelineStageInView) {
+              var errorOutput = `[ERROR] Unable to reconcile stage UUID - ${stage_uuid}\n`;
+              await redisClient.append(`job:${job_id}:logs`, errorOutput);
+              await redisClient.set(`job:${job_id}:status`, "failed");
+              await addLogToDeploymentRecord(deploymentRecord.id, errorOutput);
+              await markDeploymentAsComplete(
+                deploymentRecord.id,
+                DEPLOYMENT_STATUS.FAILED,
+                null,
+                deploymentLockKey
+              );
+              return;
+            }
+
+            var newLogMessage = `\n[INFO] Stage UUID - ${stage_uuid} processing\n`;
+            await redisClient.append(`job:${job_id}:logs`, newLogMessage);
+            await addLogToDeploymentRecord(deploymentRecord.id, newLogMessage);
+          } else {
+            var errorOutput = `[ERROR] Project has no active pipeline record\n`;
+            await redisClient.append(`job:${job_id}:logs`, errorOutput);
+            await redisClient.set(`job:${job_id}:status`, "failed");
+            await addLogToDeploymentRecord(deploymentRecord.id, errorOutput);
+            await markDeploymentAsComplete(
+              deploymentRecord.id,
+              DEPLOYMENT_STATUS.FAILED,
+              null,
+              deploymentLockKey
+            );
+            return;
+          }
+
+          PIPELINE_SQL_DEPLOYMENT_FILTER = `AND pipeline_stage_uuid = '${stage_uuid}'`;
+        }
+
+        var newLogMessage = `\n[INFO] Getting specific deployment record\n`;
+        await redisClient.append(`job:${job_id}:logs`, newLogMessage);
+        await addLogToDeploymentRecord(deploymentRecord.id, newLogMessage);
+
+        try {
+          specificDeploymentInView = await getSingleRow(
+            `SELECT * FROM deployments WHERE project_id = ? AND commit_hash = ? AND status = ? AND action = ? ${PIPELINE_SQL_DEPLOYMENT_FILTER}`,
+            [projectInView.id, commit_hash, "COMPLETED", "DEPLOY"]
+          );
+
+          var newLogMessage = `\n[INFO] Deployment record - ${specificDeploymentInView.id} obtained\n`;
+          await redisClient.append(`job:${job_id}:logs`, newLogMessage);
+          await addLogToDeploymentRecord(deploymentRecord.id, newLogMessage);
+        } catch (err) {
+          var errorOutput = `[ERROR] Error getting deployment record: ${err}\n`;
+          await redisClient.append(`job:${job_id}:logs`, errorOutput);
+          await redisClient.set(`job:${job_id}:status`, "failed");
+          await addLogToDeploymentRecord(deploymentRecord.id, errorOutput);
+          await markDeploymentAsComplete(
+            deploymentRecord.id,
+            DEPLOYMENT_STATUS.FAILED,
+            null,
+            deploymentLockKey
+          );
+          return;
+        }
+
+        if (specificDeploymentInView.artifact_path) {
+          backupFileLocation = specificDeploymentInView.artifact_path;
+        } else {
+          var errorOutput = `[ERROR] Error getting project/pipeline artifact path\n`;
+          await redisClient.append(`job:${job_id}:logs`, errorOutput);
+          await redisClient.set(`job:${job_id}:status`, "failed");
+          await addLogToDeploymentRecord(deploymentRecord.id, errorOutput);
+          await markDeploymentAsComplete(
+            deploymentRecord.id,
+            DEPLOYMENT_STATUS.FAILED,
+            null,
+            deploymentLockKey
+          );
+          return;
+        }
+
+        // Reset Git HEAD
+        try {
+          var newLogMessage = await runShell(
+            `cd ${projectInView.app_local_path} && git reset --hard ${commit_hash}`
+          );
+
+          await redisClient.append(`job:${job_id}:logs`, newLogMessage);
+          await addLogToDeploymentRecord(deploymentRecord.id, newLogMessage);
+        } catch (err) {
+          var errorOutput = `[ERROR] ${err}\n`;
+          await redisClient.append(`job:${job_id}:logs`, errorOutput);
+          await redisClient.set(`job:${job_id}:status`, "failed");
+          await addLogToDeploymentRecord(deploymentRecord.id, errorOutput);
+          await markDeploymentAsComplete(
+            deploymentRecord.id,
+            DEPLOYMENT_STATUS.FAILED,
+            null,
+            deploymentLockKey
+          );
+          return;
+        }
+
+        // Clean up files except .git
+        const files = fsSync.readdirSync(projectInView.app_local_path);
+        for (const file of files) {
+          if (![".git"].includes(file)) {
+            const fullPath = path.join(projectInView.app_local_path, file);
+            fsSync.rmSync(fullPath, { recursive: true, force: true });
+          }
+        }
+
+        // Restore files from the backup
+        try {
+          var newLogMessage = await runShell(
+            `tar -xzf "${backupFileLocation}" -C "${projectInView.app_local_path}"`
+          );
+          await redisClient.append(`job:${job_id}:logs`, newLogMessage);
+          await addLogToDeploymentRecord(deploymentRecord.id, newLogMessage);
+        } catch (err) {
+          var errorOutput = `[ERROR] ${err}\n`;
+          await redisClient.append(`job:${job_id}:logs`, errorOutput);
+          await redisClient.set(`job:${job_id}:status`, "failed");
+          await addLogToDeploymentRecord(deploymentRecord.id, errorOutput);
+          await markDeploymentAsComplete(
+            deploymentRecord.id,
+            DEPLOYMENT_STATUS.FAILED,
+            null,
+            deploymentLockKey
+          );
+          return;
+        }
+
+        try {
+          // STOP server
+          serverActionHandler(
+            projectInView.id,
+            "kill",
+            pipelineStageInView?.stage_uuid
+          );
+
+          var newLogMessage = `\n[INFO] Server stopped && rebooting\n`;
+          await redisClient.append(`job:${job_id}:logs`, newLogMessage);
+          await addLogToDeploymentRecord(deploymentRecord.id, newLogMessage);
+
+          // REDEPLOY
+          serverActionHandler(
+            projectInView.id,
+            "redeploy",
+            pipelineStageInView?.stage_uuid
+          );
+
+          var newLogMessage = `\n[INFO] Server restarted successfully\n`;
+          await redisClient.append(`job:${job_id}:logs`, newLogMessage);
+          await addLogToDeploymentRecord(deploymentRecord.id, newLogMessage);
+        } catch (err) {
+          var errorOutput = `[ERROR] ${err}\n`;
+          await redisClient.append(`job:${job_id}:logs`, errorOutput);
+          await redisClient.set(`job:${job_id}:status`, "failed");
+          await addLogToDeploymentRecord(deploymentRecord.id, errorOutput);
+          await markDeploymentAsComplete(
+            deploymentRecord.id,
+            DEPLOYMENT_STATUS.FAILED,
+            null,
+            deploymentLockKey
+          );
+          return;
+        }
+
+        if (pipelineStageInView) {
+          var newLogMessage = await updatePipelineGitHead(
+            projectInView.id,
+            pipelineStageInView.git_branch,
+            commit_hash
+          );
+          await addLogToDeploymentRecord(
+            deploymentRecord.id,
+            `\n${newLogMessage}\n`
+          );
+        } else {
+          await pool.run("UPDATE projects SET current_head = ? WHERE id = ?", [
+            commit_hash,
+            projectInView.id,
+          ]);
+        }
+
+        await redisClient.set(`job:${job_id}:status`, "complete");
+
+        // Clear the logs from Redis upon completion
+        await redisClient.del(`job:${job_id}:logs`);
+
+        await markDeploymentAsComplete(
+          deploymentRecord.id,
+          DEPLOYMENT_STATUS.COMPLETED,
+          null,
+          deploymentLockKey
+        );
+      } catch (e) {
+        console.error("Rollback error:", e);
+      }
+    }
+
     try {
       projectInView = await getSingleRow(
         `
@@ -1230,272 +1477,42 @@ async function rollbackToCommitSnapshot(req, res) {
       );
 
       if (!acquired) {
-        return res.status(409).json({
-          error: "Project has another deployment activity in progress.",
-        });
+        // Queue this rollback; respond and poll for lock
+        await redisClient.set(`job:${job_id}:status`, "queued");
+        await redisClient.del(`job:${job_id}:logs`);
+        res.json({ job_id, queued: true, message: "Another deployment is running; this job is queued." });
+
+        (async () => {
+          while (true) {
+            const got = await redisClient.set(
+              deploymentLockKey,
+              "locked",
+              "NX",
+              "EX",
+              600
+            );
+            if (got) break;
+            await new Promise((r) => setTimeout(r, 3000));
+          }
+          await performRollback();
+        })();
+        return;
       }
     } catch (error) {
       return res
         .status(403)
         .json({ status: false, message: "Error getting deployment lock key" });
     }
-
+    // Respond immediately and run rollback in background
     await redisClient.set(`job:${job_id}:status`, "queued");
     await redisClient.del(`job:${job_id}:logs`);
 
-    try {
-      await redisClient.set(`job:${job_id}:status`, "running");
+    res.json({ job_id });
 
-      // CREATE DEPLOYMENT RECORD LOG
-      deploymentRecord = await createRowAndReturn(
-        "deployments",
-        "INSERT INTO deployments (user_id, project_id, commit_hash, pipeline_stage_uuid, action, status, started_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        [
-          user.id,
-          projectInView.id,
-          commit_hash,
-          stage_uuid ?? null,
-          "ROLLBACK",
-          "RUNNING",
-          deploymentTimestamp,
-        ]
-      );
-      var newLogMessage = "\n[INFO] Deployment record created\n";
-      await redisClient.append(`job:${job_id}:logs`, newLogMessage);
-      await addLogToDeploymentRecord(deploymentRecord.id, newLogMessage);
-    } catch (error) {
-      var errorOutput = `[ERROR] Error recording deployment log: ${error}`;
-      await redisClient.append(`job:${job_id}:logs`, errorOutput);
-      await redisClient.set(`job:${job_id}:status`, "failed");
-      await addLogToDeploymentRecord(deploymentRecord.id, errorOutput);
-      await markDeploymentAsComplete(
-        deploymentRecord.id,
-        DEPLOYMENT_STATUS.FAILED,
-        null,
-        deploymentLockKey
-      );
-      return res
-        .status(403)
-        .json({ status: false, message: "Error recording deployment log" });
-    }
-
-    if (stage_uuid) {
-      const pipelineJson = getProjectPipelineJSON(projectInView.pipeline_json);
-      if (pipelineJson) {
-        pipelineStageInView = pipelineJson.find((stage) => {
-          const { stage_uuid } = stage;
-          return pipelineJson.find(
-            (existingStage) => existingStage.stage_uuid === String(stage_uuid)
-          );
-        });
-
-        if (!pipelineStageInView) {
-          var errorOutput = `[ERROR] Unable to reconcile stage UUID - ${stage_uuid}\n`;
-          await redisClient.append(`job:${job_id}:logs`, errorOutput);
-          await redisClient.set(`job:${job_id}:status`, "failed");
-          await addLogToDeploymentRecord(deploymentRecord.id, errorOutput);
-          await markDeploymentAsComplete(
-            deploymentRecord.id,
-            DEPLOYMENT_STATUS.FAILED,
-            null,
-            deploymentLockKey
-          );
-          return res.status(403).json({
-            status: false,
-            message: "Unable to reconcile stage UUID",
-          });
-        }
-
-        var newLogMessage = `\n[INFO] Stage UUID - ${stage_uuid} processing\n`;
-        await redisClient.append(`job:${job_id}:logs`, newLogMessage);
-        await addLogToDeploymentRecord(deploymentRecord.id, newLogMessage);
-      } else {
-        var errorOutput = `[ERROR] Project has no active pipeline record\n`;
-        await redisClient.append(`job:${job_id}:logs`, errorOutput);
-        await redisClient.set(`job:${job_id}:status`, "failed");
-        await addLogToDeploymentRecord(deploymentRecord.id, errorOutput);
-        await markDeploymentAsComplete(
-          deploymentRecord.id,
-          DEPLOYMENT_STATUS.FAILED,
-          null,
-          deploymentLockKey
-        );
-        return res.status(403).json({
-          status: false,
-          message: "Project has no active pipeline record",
-        });
-      }
-
-      PIPELINE_SQL_DEPLOYMENT_FILTER = `AND pipeline_stage_uuid = '${stage_uuid}'`;
-    }
-
-    var newLogMessage = `\n[INFO] Getting specific deployment record\n`;
-    await redisClient.append(`job:${job_id}:logs`, newLogMessage);
-    await addLogToDeploymentRecord(deploymentRecord.id, newLogMessage);
-
-    try {
-      specificDeploymentInView = await getSingleRow(
-        `SELECT * FROM deployments WHERE project_id = ? AND commit_hash = ? AND status = ? AND action = ? ${PIPELINE_SQL_DEPLOYMENT_FILTER}`,
-        [projectInView.id, commit_hash, "COMPLETED", "DEPLOY"]
-      );
-
-      var newLogMessage = `\n[INFO] Deployment record - ${specificDeploymentInView.id} obtained\n`;
-      await redisClient.append(`job:${job_id}:logs`, newLogMessage);
-      await addLogToDeploymentRecord(deploymentRecord.id, newLogMessage);
-    } catch (err) {
-      var errorOutput = `[ERROR] Error getting deployment record: ${err}\n`;
-      await redisClient.append(`job:${job_id}:logs`, errorOutput);
-      await redisClient.set(`job:${job_id}:status`, "failed");
-      await addLogToDeploymentRecord(deploymentRecord.id, errorOutput);
-      await markDeploymentAsComplete(
-        deploymentRecord.id,
-        DEPLOYMENT_STATUS.FAILED,
-        null,
-        deploymentLockKey
-      );
-      return res
-        .status(403)
-        .json({ status: false, message: "Error getting deployment record" });
-    }
-
-    if (specificDeploymentInView.artifact_path) {
-      backupFileLocation = specificDeploymentInView.artifact_path;
-    } else {
-      var errorOutput = `[ERROR] Error getting project/pipeline artifact path\n`;
-      await redisClient.append(`job:${job_id}:logs`, errorOutput);
-      await redisClient.set(`job:${job_id}:status`, "failed");
-      await addLogToDeploymentRecord(deploymentRecord.id, errorOutput);
-      await markDeploymentAsComplete(
-        deploymentRecord.id,
-        DEPLOYMENT_STATUS.FAILED,
-        null,
-        deploymentLockKey
-      );
-
-      return res
-        .status(403)
-        .json({ status: false, message: "Error getting artifact path" });
-    }
-
-    // Reset Git HEAD
-    try {
-      var newLogMessage = await runShell(
-        `cd ${projectInView.app_local_path} && git reset --hard ${commit_hash}`
-      );
-
-      await redisClient.append(`job:${job_id}:logs`, newLogMessage);
-      await addLogToDeploymentRecord(deploymentRecord.id, newLogMessage);
-    } catch (err) {
-      var errorOutput = `[ERROR] ${err}\n`;
-      await redisClient.append(`job:${job_id}:logs`, errorOutput);
-      await redisClient.set(`job:${job_id}:status`, "failed");
-      await addLogToDeploymentRecord(deploymentRecord.id, errorOutput);
-      await markDeploymentAsComplete(
-        deploymentRecord.id,
-        DEPLOYMENT_STATUS.FAILED,
-        null,
-        deploymentLockKey
-      );
-    }
-
-    // Clean up files except .git
-    const files = fs.readdirSync(projectInView.app_local_path);
-    for (const file of files) {
-      if (![".git"].includes(file)) {
-        const fullPath = path.join(projectInView.app_local_path, file);
-        fs.rmSync(fullPath, { recursive: true, force: true });
-      }
-    }
-
-    // Restore files from the backup
-    try {
-      var newLogMessage = await runShell(
-        `tar -xzf "${backupFileLocation}" -C "${projectInView.app_local_path}"`
-      );
-      await redisClient.append(`job:${job_id}:logs`, newLogMessage);
-      await addLogToDeploymentRecord(deploymentRecord.id, newLogMessage);
-    } catch (err) {
-      var errorOutput = `[ERROR] ${err}\n`;
-      await redisClient.append(`job:${job_id}:logs`, errorOutput);
-      await redisClient.set(`job:${job_id}:status`, "failed");
-      await addLogToDeploymentRecord(deploymentRecord.id, errorOutput);
-      await markDeploymentAsComplete(
-        deploymentRecord.id,
-        DEPLOYMENT_STATUS.FAILED,
-        null,
-        deploymentLockKey
-      );
-    }
-
-    try {
-      // STOP server
-      serverActionHandler(
-        projectInView.id,
-        "kill",
-        pipelineStageInView?.stage_uuid
-      );
-
-      var newLogMessage = `\n[INFO] Server stopped && rebooting\n`;
-      await redisClient.append(`job:${job_id}:logs`, newLogMessage);
-      await addLogToDeploymentRecord(deploymentRecord.id, newLogMessage);
-
-      // REDEPLOY
-      serverActionHandler(
-        projectInView.id,
-        "redeploy",
-        pipelineStageInView?.stage_uuid
-      );
-
-      var newLogMessage = `\n[INFO] Server restarted successfully\n`;
-      await redisClient.append(`job:${job_id}:logs`, newLogMessage);
-      await addLogToDeploymentRecord(deploymentRecord.id, newLogMessage);
-    } catch (err) {
-      var errorOutput = `[ERROR] ${err}\n`;
-      await redisClient.append(`job:${job_id}:logs`, errorOutput);
-      await redisClient.set(`job:${job_id}:status`, "failed");
-      await addLogToDeploymentRecord(deploymentRecord.id, errorOutput);
-      await markDeploymentAsComplete(
-        deploymentRecord.id,
-        DEPLOYMENT_STATUS.FAILED,
-        null,
-        deploymentLockKey
-      );
-    }
-
-    if (pipelineStageInView) {
-      var newLogMessage = await updatePipelineGitHead(
-        projectInView.id,
-        pipelineStageInView.git_branch,
-        commit_hash
-      );
-      await addLogToDeploymentRecord(
-        deploymentRecord.id,
-        `\n${newLogMessage}\n`
-      );
-    } else {
-      await pool.run("UPDATE projects SET current_head = ? WHERE id = ?", [
-        commit_hash,
-        projectInView.id,
-      ]);
-    }
-
-    await redisClient.set(`job:${job_id}:status`, "complete");
-
-    // Clear the logs from Redis upon completion
-    await redisClient.del(`job:${job_id}:logs`);
-
-    await markDeploymentAsComplete(
-      deploymentRecord.id,
-      DEPLOYMENT_STATUS.COMPLETED,
-      null,
-      deploymentLockKey
-    );
-
-    return res.json({
-      status: true,
-      message: "Project details updated successfully",
-      data: {},
-    });
+    (async () => {
+      await performRollback();
+    })();
+    return;
   } catch (error) {
     console.log({ error });
     return res
