@@ -1,0 +1,295 @@
+{
+  "Users": {
+    "name": "users",
+    "fields": {
+      "id": {
+        "type": "INTEGER",
+        "autoIncrement": true,
+        "primaryKey": true
+      },
+      "username": {
+        "type": "TEXT"
+      },
+      "email": {
+        "type": "TEXT"
+      },
+      "password": {
+        "type": "TEXT"
+      },
+      "created_at": {
+        "type": "DATETIME",
+        "default": "CURRENT_TIMESTAMP"
+      },
+      "updated_at": {
+        "type": "DATETIME",
+        "default": "CURRENT_TIMESTAMP",
+        "nullable": true
+      }
+    },
+    "relations": {
+      "projects": {
+        "type": "hasMany",
+        "model": "projects",
+        "foreignKey": "user_id"
+      },
+      "deployments": {
+        "type": "hasMany",
+        "model": "deployments",
+        "foreignKey": "user_id"
+      }
+    },
+    "triggers": {},
+    "meta": {
+      "tableName": "users"
+    }
+  },
+  "Projects": {
+    "name": "projects",
+    "fields": {
+      "id": {
+        "type": "INTEGER",
+        "autoIncrement": true,
+        "primaryKey": true
+      },
+      "user_id": {
+        "type": "INTEGER",
+        "autoIncrement": false,
+        "primaryKey": false
+      },
+      "current_head": {
+        "type": "TEXT",
+        "nullable": true
+      },
+      "app_local_path": {
+        "type": "TEXT",
+        "nullable": true
+      },
+      "app_url": {
+        "type": "TEXT",
+        "nullable": true
+      },
+      "repository_url": {
+        "type": "TEXT",
+        "nullable": true
+      },
+      "tcp_port": {
+        "type": "TEXT",
+        "nullable": true
+      },
+      "log_file_i_location": {
+        "type": "TEXT",
+        "nullable": true
+      },
+      "log_file_ii_location": {
+        "type": "TEXT",
+        "nullable": true
+      },
+      "log_file_iii_location": {
+        "type": "TEXT",
+        "nullable": true
+      },
+      "pipeline_json": {
+        "type": "TEXT",
+        "nullable": true,
+        "helpText": "Stringified JSON array of pipeline stages, each containing: \n        { \n            stage_uuid: string, \n            stage_name: string, \n            git_branch: string, \n            environment_variables: array, \n            tcp_port: number?, \n            current_head: string?, \n            app_url: string?, \n            log_file_i_location: string?, \n            log_file_ii_location: string?, \n            log_file_iii_location: string?\n        }"
+      }
+    },
+    "relations": {
+      "deployments": {
+        "type": "hasMany",
+        "model": "deployments",
+        "foreignKey": "project_id"
+      },
+      "activity_logs": {
+        "type": "hasMany",
+        "model": "activity_logs",
+        "foreignKey": "project_id"
+      }
+    },
+    "triggers": {},
+    "meta": {
+      "tableName": "projects"
+    }
+  },
+  "Deployments": {
+    "name": "deployments",
+    "fields": {
+      "id": {
+        "type": "INTEGER",
+        "autoIncrement": true,
+        "primaryKey": true
+      },
+      "user_id": {
+        "type": "INTEGER",
+        "autoIncrement": false,
+        "primaryKey": false
+      },
+      "project_id": {
+        "type": "INTEGER",
+        "autoIncrement": false,
+        "primaryKey": false
+      },
+      "commit_hash": {
+        "type": "TEXT"
+      },
+      "action": {
+        "type": "TEXT",
+        "helpText": "choices: DEPLOY or ROLLBACK"
+      },
+      "status": {
+        "type": "TEXT",
+        "helpText": "choices: RUNNING, COMPLETED or FAILED"
+      },
+      "started_at": {
+        "type": "DATETIME",
+        "default": "CURRENT_TIMESTAMP"
+      },
+      "finished_at": {
+        "type": "DATETIME",
+        "default": "CURRENT_TIMESTAMP",
+        "nullable": true
+      },
+      "log_output": {
+        "type": "TEXT",
+        "nullable": true
+      },
+      "artifact_path": {
+        "type": "TEXT",
+        "nullable": true
+      },
+      "pipeline_stage_uuid": {
+        "type": "TEXT",
+        "nullable": true
+      }
+    },
+    "relations": {
+      "activity_logs": {
+        "type": "hasMany",
+        "model": "activity_logs",
+        "foreignKey": "deployment_id"
+      }
+    },
+    "triggers": {},
+    "meta": {
+      "tableName": "deployments"
+    }
+  },
+  "ActivityLogs": {
+    "name": "activity_logs",
+    "fields": {
+      "id": {
+        "type": "INTEGER",
+        "autoIncrement": true,
+        "primaryKey": true
+      },
+      "project_id": {
+        "type": "INTEGER",
+        "autoIncrement": false,
+        "primaryKey": false
+      },
+      "deployment_id": {
+        "type": "INTEGER",
+        "autoIncrement": false,
+        "primaryKey": false,
+        "nullable": true
+      },
+      "action": {
+        "type": "TEXT",
+        "helpText": "choices: DEPLOY or ROLLBACK"
+      },
+      "message": {
+        "type": "TEXT"
+      },
+      "created_at": {
+        "type": "DATETIME",
+        "default": "CURRENT_TIMESTAMP"
+      }
+    },
+    "relations": {},
+    "triggers": {},
+    "meta": {
+      "tableName": "activity_logs"
+    }
+  },
+  "ManagedRedisServer": {
+    "name": "managed_redis_server",
+    "fields": {
+      "id": {
+        "type": "INTEGER",
+        "autoIncrement": true,
+        "primaryKey": true
+      },
+      "name": {
+        "type": "TEXT"
+      },
+      "port": {
+        "type": "INTEGER",
+        "autoIncrement": false,
+        "primaryKey": false
+      },
+      "metadata": {
+        "type": "TEXT"
+      },
+      "created_at": {
+        "type": "DATETIME",
+        "default": "CURRENT_TIMESTAMP"
+      }
+    },
+    "relations": {},
+    "triggers": {},
+    "meta": {
+      "tableName": "managed_redis_server"
+    }
+  },
+  "SqlbunsMigrations": {
+    "name": "_sqlbuns_migrations",
+    "fields": {
+      "id": {
+        "type": "INTEGER",
+        "autoIncrement": true,
+        "primaryKey": true,
+        "nullable": true
+      },
+      "name": {
+        "type": "VARCHAR(255)",
+        "maxLength": 255
+      },
+      "checksum": {
+        "type": "VARCHAR(64)",
+        "maxLength": 64
+      },
+      "previous_checksum": {
+        "type": "VARCHAR(64)",
+        "maxLength": 64,
+        "nullable": true
+      },
+      "direction": {
+        "type": "VARCHAR(10)",
+        "maxLength": 10,
+        "default": "up"
+      },
+      "applied_at": {
+        "type": "DATETIME",
+        "default": "CURRENT_TIMESTAMP",
+        "nullable": true
+      },
+      "rolled_back": {
+        "type": "INTEGER",
+        "autoIncrement": false,
+        "primaryKey": false,
+        "nullable": true,
+        "default": "0"
+      },
+      "rolled_back_at": {
+        "type": "DATETIME",
+        "default": "CURRENT_TIMESTAMP",
+        "nullable": true
+      }
+    },
+    "relations": {},
+    "triggers": {},
+    "meta": {
+      "tableName": "_sqlbuns_migrations"
+    }
+  }
+}

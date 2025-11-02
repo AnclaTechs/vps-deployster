@@ -31,7 +31,8 @@
   },
   "homepage": "https://github.com/AnclaTechs/vps-deployster#readme",
   "dependencies": {
-    "@anclatechs/sql-buns": "^1.0.5",
+    "@anclatechs/sql-buns": "^1.0.7",
+    "@anclatechs/sql-buns-migrate": "^1.0.7",
     "bcrypt": "^6.0.0",
     "cors": "^2.8.5",
     "dotenv": "^16.5.0",
@@ -45,7 +46,6 @@
     "mysql2": "^3.14.1",
     "node-pty": "^1.0.0",
     "pg": "^8.16.0",
-    "prisma": "^6.8.2",
     "redis": "^5.0.1",
     "sqlite": "^5.1.1",
     "sqlite3": "^5.1.7",
