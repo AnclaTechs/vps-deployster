@@ -403,6 +403,9 @@
 </template>
 
 <script>
+const { defineAsyncComponent } = Vue;
+const { loadModule } = window["vue3-sfc-loader"];
+
 export default {
   name: "ProjectView",
   props: ["id"],

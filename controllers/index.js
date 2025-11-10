@@ -22,6 +22,8 @@ const {
   rollbackToCommitValidationSchema,
   createRedisInstanceValidationSchema,
   redisClientAdminOptionValidationSchema,
+  databaseCredentialsValidationSchema,
+  disconnectIdlePgConnectionValidationSchema,
 } = require("../utils/validator");
 const redisClient = require("../redis");
 const {
@@ -41,8 +43,19 @@ const {
   runShell,
   startRedisServer,
   killRedisServer,
+  listPostgresClusters,
+  getPostgresCredentials,
+  runNativePsqlQuery,
+  formatDatabaseLiveDuration,
+  parsePGDatabaseSize,
 } = require("../utils/functools");
-const { DEPLOYMENT_STATUS } = require("../utils/constants");
+const {
+  DEPLOYMENT_STATUS,
+  PASSWORD_TTL,
+  PG_PASSWORD_KEY,
+  PG_USERNAME_KEY,
+  PG_CLUSTER,
+} = require("../utils/constants");
 const jwtr = new JWTR(redisClient);
 const DEPLOYSTER_VPS_PUBLIC_IP =
   process.env.DEPLOYSTER_VPS_PUBLIC_IP || "127.0.0.1";
@@ -1763,6 +1776,284 @@ async function redisInstanceAdmin(req, res) {
   }
 }
 
+async function getPostgresClusters(req, res) {
+  try {
+    const user = req.user;
+
+    const pgVersions = await listPostgresClusters();
+
+    return res.json({
+      status: true,
+      message: "Postgres clusters returned successfully",
+      count: pgVersions.length ?? 0,
+      data: pgVersions,
+      dbVisualiserAuthRequired:
+        typeof (await getPostgresCredentials()) === "undefined",
+    });
+  } catch (error) {
+    console.log({ error });
+    return res
+      .status(500)
+      .json({ status: false, message: "Internal server error" });
+  }
+}
+
+async function setPostgresDatabasePass(req, res) {
+  try {
+    const { error } = databaseCredentialsValidationSchema.validate(req.body);
+    if (error) {
+      res.status(400);
+      return res.json({
+        status: false,
+        message: error.details[0].message,
+      });
+    }
+
+    const { username, password, port } = req.body;
+
+    try {
+      const host = "localhost";
+      const database = "postgres"; // default
+
+      const output = await runShell(
+        `psql -h ${host} -p ${port} -U ${username} -d ${database} -t -A -c "SELECT version();"`,
+        {
+          env: { ...process.env, PGPASSWORD: password }, // Passing the password like this instead of (link format) help clean the bash history of direct exposure of the password
+        }
+      );
+
+      if (output && output.includes("PostgreSQL")) {
+        await redisClient.set(PG_PASSWORD_KEY, password, "EX", PASSWORD_TTL);
+        await redisClient.set(PG_USERNAME_KEY, username, "EX", PASSWORD_TTL);
+        await redisClient.set(PG_CLUSTER, port, "EX", PASSWORD_TTL);
+        const pgCredentials = await getPostgresCredentials(port);
+        return res.status(200).json({
+          success: true,
+          message: `Connection successful (v${output.trim()}). Password stored for 10 minutes`,
+          data: {},
+          dbVisualiserAuthRequired: typeof pgCredentials === "undefined",
+        });
+      } else {
+        return res.status(403).json({
+          success: false,
+          message: "Could not verify PostgreSQL version",
+        });
+      }
+    } catch (err) {
+      if (err.message?.includes("password authentication failed")) {
+        return res
+          .status(403)
+          .json({ success: false, message: "Invalid DB username or password" });
+      }
+      if (err.message?.includes("could not connect")) {
+        return res
+          .status(403)
+          .json({ success: false, message: "Cannot reach PostgreSQL server" });
+      }
+
+      throw err;
+    }
+  } catch (error) {
+    return res
+      .status(500)
+      .json({ status: false, message: "Internal server error" });
+  }
+}
+
+async function getPostgresClusterAnalytics(req, res) {
+  try {
+    const pgData = req.pgData;
+
+    const versionOutput = await runShell(
+      `psql -h localhost -p ${pgData.clusterPort} -U ${pgData.pgCredentials.username} -d postgres -t -A -c "SELECT version();"`,
+      {
+        env: { ...process.env, PGPASSWORD: pgData.pgCredentials.password },
+      }
+    );
+
+    let clusterFullName;
+    let clusterStatus;
+
+    if (versionOutput && versionOutput.includes("PostgreSQL")) {
+      clusterFullName = versionOutput.trim().split(",")[0];
+      clusterFullName = clusterFullName.split("on")[0];
+      clusterStatus = true;
+    } else {
+      clusterFullName = "N?A";
+      clusterStatus = false;
+    }
+
+    var query = `SELECT now() - pg_postmaster_start_time() AS uptime;`;
+    const pgUptime = await runNativePsqlQuery({
+      host: "localhost",
+      port: pgData.clusterPort,
+      user: pgData.pgCredentials.username,
+      password: pgData.pgCredentials.password,
+      database: "postgres",
+      query,
+    });
+
+    var query = `
+    SELECT count(*) FROM pg_stat_activity
+    WHERE pid <> pg_backend_pid()
+    AND client_addr IS NOT NULL
+    AND usename IS NOT NULL;`;
+
+    const totalConnections = await runNativePsqlQuery({
+      host: "localhost",
+      port: pgData.clusterPort,
+      user: pgData.pgCredentials.username,
+      password: pgData.pgCredentials.password,
+      database: "postgres",
+      query,
+    });
+
+    var query = `
+    SELECT pid, usename, datname, client_addr, state, backend_start, query_start
+    FROM pg_stat_activity 
+    WHERE pid <> pg_backend_pid()
+    AND usename IS NOT NULL
+    AND client_addr IS NOT NULL
+    AND state IS NOT NULL
+    ORDER BY backend_start;
+  `;
+
+    const connectionString = await runNativePsqlQuery({
+      host: "localhost",
+      port: pgData.clusterPort,
+      user: pgData.pgCredentials.username,
+      password: pgData.pgCredentials.password,
+      database: "postgres",
+      query,
+    });
+
+    const connectionList = connectionString
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => {
+        const [
+          pid,
+          usename,
+          datname,
+          client_addr,
+          state,
+          backend_start,
+          query_start,
+        ] = line.split("|");
+        return {
+          pid,
+          usename,
+          datname,
+          client_addr,
+          state,
+          backend_start,
+          query_start,
+        };
+      });
+
+    var query = `SELECT 
+    datname,
+    pg_size_pretty(pg_database_size(datname)) AS size
+    FROM pg_database WHERE datallowconn;
+  `;
+
+    const database = await runNativePsqlQuery({
+      host: "localhost",
+      port: pgData.clusterPort,
+      user: pgData.pgCredentials.username,
+      password: pgData.pgCredentials.password,
+      database: "postgres",
+      query,
+    });
+
+    let totalBytes = 0;
+
+    const databases = database
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => {
+        const [datname, size] = line.split("|");
+        const sizeInBytes = parsePGDatabaseSize(size);
+        totalBytes += sizeInBytes;
+        return {
+          datname,
+          size: `${Number(sizeInBytes / (1024 * 1024)).toFixed(2)}MB`,
+        };
+      });
+
+    const totalMB = totalBytes / (1024 * 1024);
+    const totalClusterSize = `${Number(totalMB).toFixed(2)}MB`;
+
+    const analytics = {
+      clusterFullName,
+      clusterStatus,
+      totalClusterSize,
+      version: pgData.version,
+      uptime: formatDatabaseLiveDuration(pgUptime),
+      totalConnections,
+      connectionList,
+      databases,
+    };
+
+    return res.status(200).json({
+      status: true,
+      message: "Analytics returned successfully",
+      data: analytics,
+      dbVisualiserAuthRequired: false,
+    });
+  } catch (error) {
+    console.error("Analytics error:", error);
+    return res
+      .status(500)
+      .json({ status: false, message: "Internal server error", data: {} });
+  }
+}
+
+async function disconnectIdlePgConnection(req, res) {
+  try {
+    const { error } = disconnectIdlePgConnectionValidationSchema.validate(
+      req.body
+    );
+    if (error) {
+      res.status(400);
+      return res.json({
+        status: false,
+        message: error.details[0].message,
+      });
+    }
+
+    const pgData = req.pgData;
+    const { pid } = req.body;
+
+    const query = `SELECT pg_terminate_backend(${pid})`;
+
+    const output = await runNativePsqlQuery({
+      host: "localhost",
+      port: pgData.clusterPort,
+      user: pgData.pgCredentials.username,
+      password: pgData.pgCredentials.password,
+      database: "postgres",
+      query,
+    });
+
+    if (output.includes("t")) {
+      return res.json({
+        success: true,
+        message: `Connection ${pid} terminated.`,
+      });
+    } else {
+      return res.status(503).json({
+        success: false,
+        message: `Failed to terminate connection ${pid}.`,
+      });
+    }
+  } catch (error) {
+    return res
+      .status(500)
+      .json({ status: false, message: "Internal server error" });
+  }
+}
+
 module.exports = {
   createUser,
   loginUser,
@@ -1784,4 +2075,8 @@ module.exports = {
   redisOverviewData,
   createNewRedisInstance,
   redisInstanceAdmin,
+  getPostgresClusters,
+  setPostgresDatabasePass,
+  getPostgresClusterAnalytics,
+  disconnectIdlePgConnection,
 };

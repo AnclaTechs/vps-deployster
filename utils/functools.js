@@ -7,7 +7,13 @@ const path = require("path");
 const dotenv = require("dotenv");
 const { pool, getSingleRow } = require("@anclatechs/sql-buns");
 const { exec, execSync, spawn } = require("child_process");
-const { DEPLOYMENT_STATUS } = require("./constants");
+const {
+  DEPLOYMENT_STATUS,
+  PG_PASSWORD_KEY,
+  PG_USERNAME_KEY,
+  PG_CLUSTER,
+  PASSWORD_TTL,
+} = require("./constants");
 const redisClient = require("../redis");
 
 const isIPAddress = (str) => /\d+\.\d+\.\d+\.\d+/.test(str);
@@ -548,17 +554,24 @@ async function serverActionHandler(projectId, actionType, pipelineStageUUID) {
   }
 }
 
-async function runShell(cmd) {
+async function runShell(cmd, options = {}) {
   return new Promise((resolve, reject) => {
-    exec(cmd, { maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
-      if (err) {
-        const error = new Error(stderr || err.message);
-        error.code = err.code;
-        error.cmd = cmd;
-        return reject(error);
+    exec(
+      cmd,
+      {
+        maxBuffer: 1024 * 1024,
+        env: { ...process.env, ...(options.env || {}) },
+      },
+      (err, stdout, stderr) => {
+        if (err) {
+          const error = new Error(stderr || err.message);
+          error.code = err.code;
+          error.cmd = cmd;
+          return reject(error);
+        }
+        resolve(stdout.trim());
       }
-      resolve(stdout.trim());
-    });
+    );
   });
 }
 
@@ -718,6 +731,149 @@ async function getRedisPassword(host = "127.0.0.1", port = 6379) {
   }
 }
 
+async function listPostgresClusters() {
+  try {
+    // Get with pg_lsclusters first
+    const output = await runShell("pg_lsclusters");
+
+    const lines = output.trim().split("\n");
+
+    if (lines.length <= 1) return [];
+
+    const headers = lines[0]
+      .replace("Data directory", "DataDirectory")
+      .replace("Log file", "LogFile")
+      .trim()
+      .split(/\s+/);
+    const clusters = lines.slice(1).map((line) => {
+      const values = line.trim().split(/\s+/);
+      const cluster = Object.fromEntries(headers.map((h, i) => [h, values[i]]));
+      return {
+        version: cluster.Ver,
+        cluster: cluster.Cluster,
+        port: cluster.Port,
+        isActive: cluster.Status === "online",
+        //owner: cluster.Owner,
+        dataDir: cluster["DataDirectory"],
+        logFile: cluster["LogFile"],
+      };
+    });
+
+    return clusters;
+  } catch (err) {
+    // Fallback: manual process scan
+    const output = await runShell("ps aux | grep postgres | grep -v grep");
+
+    if (!output.trim()) return [];
+
+    const lines = output.trim().split("\n");
+
+    const clusters = [];
+    const seen = new Set();
+
+    for (const line of lines) {
+      const matchPort = line.match(/-p\s*(\d+)/);
+      const matchDataDir = line.match(/-D\s*(\S+)/);
+
+      const port = matchPort ? matchPort[1] : "unknown";
+      const dataDir = matchDataDir ? matchDataDir[1] : "unknown";
+      const key = `${port}-${dataDir}`;
+
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      clusters.push({
+        version: "unknown",
+        cluster: "unknown",
+        port: port,
+        isActive: true,
+        //owner: "postgres",
+        dataDir: dataDir,
+        logFile: "unknown",
+      });
+    }
+
+    return clusters;
+  }
+}
+
+async function getPostgresCredentials(port = undefined) {
+  try {
+    const [username, password, cluster] = await Promise.all([
+      redisClient.get(PG_USERNAME_KEY),
+      redisClient.get(PG_PASSWORD_KEY),
+      redisClient.get(PG_CLUSTER),
+    ]);
+
+    if (port && cluster != port) {
+      return undefined;
+    }
+
+    if (username && password) {
+      await Promise.all([
+        redisClient.expire(PG_USERNAME_KEY, PASSWORD_TTL),
+        redisClient.expire(PG_PASSWORD_KEY, PASSWORD_TTL),
+        redisClient.expire(PG_CLUSTER, PASSWORD_TTL),
+      ]);
+      return { username, password, cluster };
+    }
+
+    return undefined;
+  } catch (error) {
+    throw error;
+  }
+}
+
+async function runNativePsqlQuery({
+  host,
+  port,
+  user,
+  password,
+  database,
+  query,
+}) {
+  const output = await runShell(
+    `psql -h ${host} -p ${port} -U ${user} -d ${database} -t -A -c "${query}"`,
+    { env: { ...process.env, PGPASSWORD: password } }
+  );
+  return output.trim();
+}
+
+function formatDatabaseLiveDuration(timeStr) {
+  if (!timeStr) return "";
+
+  let days = 0;
+
+  // Extract day/ days part if present
+  const dayMatch = timeStr.match(/(\d+)\s+day/);
+  if (dayMatch) {
+    days = parseInt(dayMatch[1], 10);
+    timeStr = timeStr.replace(/(\d+)\s+day[s]?\s*/, "").trim();
+  }
+
+  // Extract time part (HH:MM:SS.micro)
+  const [time, micros] = timeStr.split(".");
+  const [hours, minutes, seconds] = time.split(":").map(Number);
+  const microSeconds = micros ? Number(`0.${micros}`) : 0;
+
+  let totalSeconds = hours * 3600 + minutes * 60 + seconds + microSeconds;
+  totalSeconds = Math.floor(totalSeconds);
+
+  const hrs = Math.floor(totalSeconds / 3600);
+  const mins = Math.floor((totalSeconds % 3600) / 60);
+
+  return `${days}d ${hrs}h ${mins}m`;
+}
+
+function parsePGDatabaseSize(sizeStr) {
+  const [value, unit] = sizeStr.split(" ");
+  const n = parseFloat(value);
+  if (unit === "kB") return n * 1024;
+  if (unit === "MB") return n * 1024 * 1024;
+  if (unit === "GB") return n * 1024 * 1024 * 1024;
+  return n; // In bytes
+}
+
 module.exports = {
   isIPAddress,
   getProjectPort,
@@ -741,4 +897,9 @@ module.exports = {
   startRedisServer,
   killRedisServer,
   getRedisPassword,
+  listPostgresClusters,
+  getPostgresCredentials,
+  runNativePsqlQuery,
+  formatDatabaseLiveDuration,
+  parsePGDatabaseSize,
 };

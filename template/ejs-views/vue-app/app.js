@@ -34,6 +34,13 @@ const components = {
   ProjectViewPage: () => loadModule("/vue/ProjectView.vue", httpLoaderOption),
   RedisDashboard: () =>
     loadModule("/vue/pages/RedisDashboard.vue", httpLoaderOption),
+  PostgresDashboard: () =>
+    loadModule("/vue/pages/database/PostgresMain.vue", httpLoaderOption),
+  PostgresDbAnalyticsVisualizer: () =>
+    loadModule(
+      "/vue/pages/database/PostgresDbVisualizer.vue",
+      httpLoaderOption
+    ),
 };
 
 const routes = [
@@ -57,6 +64,18 @@ const routes = [
     path: "/redis-dash",
     name: "RedisDashboard",
     component: components.RedisDashboard,
+    meta: { requiresAuth: true },
+  },
+  {
+    path: "/database/postgres",
+    name: "PostgresDatabase",
+    component: components.PostgresDashboard,
+    meta: { requiresAuth: true },
+  },
+  {
+    path: "/database/postgres/:cluster/analytics",
+    name: "PostgresDbAnalyticsVisualizer",
+    component: components.PostgresDbAnalyticsVisualizer,
     meta: { requiresAuth: true },
   },
 ];
@@ -171,6 +190,41 @@ app.config.globalProperties.$checkAuthentication = async function () {
       router.push("/login");
       toastr.error(err.response?.data?.message || "Authentication failed");
     }
+  }
+};
+app.config.globalProperties.$dbVisualiserAuthRequired = ref({
+  status: true,
+  database: null,
+  version: null,
+});
+app.config.globalProperties.$dbVisualiserAuthenticatorFunc = function (
+  apiResponse,
+  database = null,
+  version = null
+) {
+  const characters =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  let randomChar = "";
+  for (let i = 0; i < 15; i++) {
+    randomChar += characters.charAt(
+      Math.floor(Math.random() * characters.length)
+    );
+  }
+
+  if (typeof apiResponse.dbVisualiserAuthRequired == "undefined") {
+    app.config.globalProperties.$dbVisualiserAuthRequired.value = {
+      randomChar,
+      database,
+      version,
+      status: true,
+    };
+  } else {
+    app.config.globalProperties.$dbVisualiserAuthRequired.value = {
+      randomChar,
+      database,
+      version,
+      status: apiResponse.dbVisualiserAuthRequired,
+    };
   }
 };
 

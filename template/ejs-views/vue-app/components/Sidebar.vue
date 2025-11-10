@@ -13,7 +13,7 @@
           Dashboard
         </li>
 
-        <li @click="toggleSection('dbs')" class="section">
+        <li @click="toggleSection('dbs')" :class="['section', {active: isActive('postgres')}]">
           <img
             src="https://www.svgrepo.com/show/485254/database.svg"
             class="menu-icon"
@@ -22,9 +22,8 @@
         </li>
         <ul v-if="sections.dbs" class="submenu">
           <li
-            @click="navigate('postgres')"
+            @click="navigate('database/postgres')"
             :class="{ active: isActive('postgres') }"
-            style="pointer-events: none"
           >
             📘 PostgreSQL
           </li>

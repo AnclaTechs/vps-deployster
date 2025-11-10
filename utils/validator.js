@@ -74,6 +74,19 @@ const redisClientAdminOptionValidationSchema = Joi.object({
   action: Joi.string().valid("redeploy", "kill").required(),
 });
 
+const databaseCredentialsValidationSchema = Joi.object({
+  username: Joi.string().required(),
+  password: Joi.string().required(),
+  database: Joi.string().valid("postgres", "mysql").required(),
+  version: Joi.string().required(),
+  port: Joi.string().required(),
+  //timeout: Joi.number()
+});
+
+const disconnectIdlePgConnectionValidationSchema = Joi.object({
+  pid: Joi.string().required(),
+});
+
 module.exports = {
   createUserValidationSchema,
   loginValidationSchema,
@@ -86,4 +99,6 @@ module.exports = {
   rollbackToCommitValidationSchema,
   createRedisInstanceValidationSchema,
   redisClientAdminOptionValidationSchema,
+  databaseCredentialsValidationSchema,
+  disconnectIdlePgConnectionValidationSchema,
 };

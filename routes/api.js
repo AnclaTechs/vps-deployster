@@ -20,8 +20,12 @@ const {
   redisOverviewData,
   createNewRedisInstance,
   redisInstanceAdmin,
+  getPostgresClusters,
+  setPostgresDatabasePass,
+  getPostgresClusterAnalytics,
+  disconnectIdlePgConnection,
 } = require("../controllers");
-const { authenticateUser } = require("../middlewares");
+const { authenticateUser, pgDBValidator } = require("../middlewares");
 var router = express.Router();
 
 router.post("/create-user-account", createUser);
@@ -86,6 +90,32 @@ router.post(
   "/redis/instance/:instanceId",
   authenticateUser,
   redisInstanceAdmin
+);
+
+router.get(
+  "/database/postgres/clusters",
+  authenticateUser,
+  getPostgresClusters
+);
+
+router.post(
+  "/database/postgres/set-password",
+  authenticateUser,
+  setPostgresDatabasePass
+);
+
+router.get(
+  "/database/postgres/:cluster/analytics",
+  authenticateUser,
+  pgDBValidator,
+  getPostgresClusterAnalytics
+);
+
+router.post(
+  "/database/postgres/:cluster/disconnect-conn",
+  authenticateUser,
+  pgDBValidator,
+  disconnectIdlePgConnection
 );
 
 module.exports = router;

@@ -1,6 +1,10 @@
 const JWTR = require("jwt-redis").default;
 const { getSingleRow } = require("@anclatechs/sql-buns");
 const redisClient = require("../redis");
+const {
+  getPostgresCredentials,
+  listPostgresClusters,
+} = require("../utils/functools");
 const jwtr = new JWTR(redisClient);
 
 async function verifyToken(token) {
@@ -64,9 +68,88 @@ function assertIsUser(req, res, next) {
   }
 }
 
+
+async function pgDBValidator(req, res, next) {
+  try {
+    const clusterParam = req.params?.cluster;
+    if (!clusterParam || typeof clusterParam !== "string") {
+      return res.status(400).json({
+        status: false,
+        message: "Invalid cluster parameter",
+        data: {},
+      });
+    }
+
+    const [version, portStr] = clusterParam.split("-");
+    if (!version || !portStr || isNaN(Number(portStr))) {
+      return res.status(400).json({
+        status: false,
+        message: 'Invalid cluster format (e.g., "11-5432")',
+        data: {},
+      });
+    }
+    const clusterPort = Number(portStr);
+    if (clusterPort < 1024 || clusterPort > 65535) {
+      return res.status(400).json({
+        status: false,
+        message: "Invalid port range (1024-65535)",
+        data: {},
+      });
+    }
+
+    const pgVersions = await listPostgresClusters();
+    if (!pgVersions.length) {
+      return res.status(404).json({
+        status: false,
+        message: "No Postgres clusters available",
+        data: {},
+        dbVisualiserAuthRequired: false,
+      });
+    }
+
+    const clusterDataRequest = pgVersions.find(
+      (cluster) => cluster.version == version && cluster.port == clusterPort
+    );
+    if (!clusterDataRequest) {
+      return res.status(403).json({
+        status: false,
+        message: `Cluster v${version} - port ${clusterPort} not found on machine`,
+        data: {},
+        dbVisualiserAuthRequired: true,
+      });
+    }
+
+    const pgCredentials = await getPostgresCredentials(clusterPort);
+    if (!pgCredentials) {
+      return res.status(403).json({
+        status: false,
+        message: "Cluster authentication required",
+        data: {},
+        dbVisualiserAuthRequired: true,
+      });
+    }
+
+    req.pgData = {
+      version,
+      clusterPort,
+      pgCredentials,
+    };
+
+    next();
+  } catch (error) {
+    console.error("PG Validator error:", error);
+    return res.status(500).json({
+      status: false,
+      message: "Server error during validation",
+      data: {},
+    });
+  }
+}
+
 module.exports = {
   verifyToken,
   findUserByDecodedToken,
   authenticateUser,
   assertIsUser,
+  pgDBValidator,
 };
