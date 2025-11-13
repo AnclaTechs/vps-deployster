@@ -35,6 +35,7 @@
     "@anclatechs/sql-buns-migrate": "^1.0.7",
     "bcrypt": "^6.0.0",
     "cors": "^2.8.5",
+    "csv-parse": "^6.1.0",
     "dotenv": "^16.5.0",
     "ejs": "^3.1.10",
     "express": "^5.1.0",

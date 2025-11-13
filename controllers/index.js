@@ -5,6 +5,7 @@ const moment = require("moment");
 const { v4: uuidv4 } = require("uuid");
 const bcrypt = require("bcrypt");
 const JWTR = require("jwt-redis").default;
+const { parse: csvParse } = require("csv-parse/sync");
 const {
   pool,
   getSingleRow,
@@ -24,6 +25,7 @@ const {
   redisClientAdminOptionValidationSchema,
   databaseCredentialsValidationSchema,
   disconnectIdlePgConnectionValidationSchema,
+  databaseQueryValidationSchema,
 } = require("../utils/validator");
 const redisClient = require("../redis");
 const {
@@ -48,6 +50,7 @@ const {
   runNativePsqlQuery,
   formatDatabaseLiveDuration,
   parsePGDatabaseSize,
+  cleanSqlQuery,
 } = require("../utils/functools");
 const {
   DEPLOYMENT_STATUS,
@@ -2054,6 +2057,108 @@ async function disconnectIdlePgConnection(req, res) {
   }
 }
 
+async function runPgDbQuery(req, res) {
+  try {
+    const { error } = databaseQueryValidationSchema.validate(req.body);
+    if (error) {
+      res.status(400);
+      return res.json({
+        status: false,
+        message: error.details[0].message,
+      });
+    }
+
+    const pgData = req.pgData;
+    const { query } = req.body;
+    const database = req.params.database;
+
+    cleanedQuery = cleanSqlQuery(query);
+
+    const start = Date.now();
+
+    const output = await runNativePsqlQuery({
+      host: "localhost",
+      port: pgData.clusterPort,
+      user: pgData.pgCredentials.username,
+      password: pgData.pgCredentials.password,
+      database,
+      query,
+      csvOutput: true,
+    });
+
+    const duration = Date.now() - start;
+
+    // Split output into lines
+    const lines = output.split("\n").filter(Boolean);
+
+    let command = "SELECT";
+    let rowCount = 0;
+    let rows = [];
+
+    const dmlMatch = lines.find((line) =>
+      /^\s*(INSERT|UPDATE|DELETE)\s+\d+/i.test(line)
+    );
+
+    if (dmlMatch) {
+      const [cmdWord, affected] = dmlMatch.split(" ");
+      command = cmdWord;
+      rowCount = Number(affected);
+    } else if (lines.length) {
+      // Parse CSV rows
+      // const header = lines[0].split(",");
+      // rows = lines.slice(1).map((line) => {
+      //   const values = line.split(",");
+      //   const row = {};
+      //   header.forEach((col, i) => (row[col] = values[i]));
+      //   return row;
+      // });
+
+      rows = await csvParse(output, {
+        columns: true, // Use header row as keys
+        skip_empty_lines: true,
+      });
+      rowCount = rows.length;
+    }
+
+    return res.json({
+      success: true,
+      message: "Query ran successfully",
+      data: {
+        command,
+        rows,
+        rowCount,
+        duration,
+      },
+      dbVisualiserAuthRequired: false,
+    });
+  } catch (error) {
+    const isPsqlError = /ERROR:|FATAL:|psql:/i.test(error.message);
+
+    if (isPsqlError) {
+      return res.status(422).json({
+        status: false,
+        type: "psql",
+        message: "PostgreSQL query failed",
+        data: {
+          duration: 0,
+          error: error.message,
+        },
+        dbVisualiserAuthRequired: false,
+      });
+    } else {
+      return res.status(500).json({
+        status: false,
+        type: "general",
+        message: "Internal server error",
+        data: {
+          error: error.message || "Unknown error occurred",
+        },
+        dbVisualiserAuthRequired: false,
+      });
+    }
+  }
+}
+
 module.exports = {
   createUser,
   loginUser,
@@ -2079,4 +2184,5 @@ module.exports = {
   setPostgresDatabasePass,
   getPostgresClusterAnalytics,
   disconnectIdlePgConnection,
+  runPgDbQuery,
 };

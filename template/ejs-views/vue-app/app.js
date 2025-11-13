@@ -36,7 +36,12 @@ const components = {
     loadModule("/vue/pages/RedisDashboard.vue", httpLoaderOption),
   PostgresDashboard: () =>
     loadModule("/vue/pages/database/PostgresMain.vue", httpLoaderOption),
-  PostgresDbAnalyticsVisualizer: () =>
+  PostgresClusterAnalytics: () =>
+    loadModule(
+      "/vue/pages/database/PostgresClusterAnalytics.vue",
+      httpLoaderOption
+    ),
+  PostgresDbVisualizer: () =>
     loadModule(
       "/vue/pages/database/PostgresDbVisualizer.vue",
       httpLoaderOption
@@ -74,8 +79,14 @@ const routes = [
   },
   {
     path: "/database/postgres/:cluster/analytics",
-    name: "PostgresDbAnalyticsVisualizer",
-    component: components.PostgresDbAnalyticsVisualizer,
+    name: "PostgresClusterAnalytics",
+    component: components.PostgresClusterAnalytics,
+    meta: { requiresAuth: true },
+  },
+  {
+    path: "/database/postgres/:cluster/:database/visualizer",
+    name: "PostgresDbVisualizer",
+    component: components.PostgresDbVisualizer,
     meta: { requiresAuth: true },
   },
 ];
@@ -226,6 +237,35 @@ app.config.globalProperties.$dbVisualiserAuthenticatorFunc = function (
       status: apiResponse.dbVisualiserAuthRequired,
     };
   }
+};
+
+app.config.globalProperties.$loadScript = function (src) {
+  return new Promise((resolve, reject) => {
+    if (document.querySelector(`script[src="${src}"]`)) {
+      resolve();
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = src;
+    script.onload = resolve;
+    script.onerror = reject;
+    document.head.appendChild(script);
+  });
+};
+
+app.config.globalProperties.$loadStyle = function (href) {
+  return new Promise((resolve, reject) => {
+    if (document.querySelector(`link[href="${href}"]`)) {
+      resolve();
+      return;
+    }
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = href;
+    link.onload = resolve;
+    link.onerror = reject;
+    document.head.appendChild(link);
+  });
 };
 
 app.mount("#app");

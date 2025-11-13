@@ -831,9 +831,14 @@ async function runNativePsqlQuery({
   password,
   database,
   query,
+  csvOutput = false,
 }) {
+  const modeFlags = csvOutput
+    ? "--csv -v ON_ERROR_STOP=1"
+    : "-v ON_ERROR_STOP=1 -t -A";
+
   const output = await runShell(
-    `psql -h ${host} -p ${port} -U ${user} -d ${database} -t -A -c "${query}"`,
+    `psql -h ${host} -p ${port} -U ${user} -d ${database} ${modeFlags} -c "${query}"`,
     { env: { ...process.env, PGPASSWORD: password } }
   );
   return output.trim();
@@ -874,6 +879,19 @@ function parsePGDatabaseSize(sizeStr) {
   return n; // In bytes
 }
 
+function cleanSqlQuery(query) {
+  if (!query) return "";
+
+  // Remove leading/trailing spaces & blank lines
+  return query
+    .trim()
+    .replace(/\r\n/g, "\n") // normalize Windows newlines
+    .replace(/\n\s*\n/g, "\n") // remove multiple blank lines
+    .replace(/\s+$/gm, "") // remove trailing spaces per line
+    .replace(/;$/, "") // optional: remove trailing semicolon
+    .replace(/[\x00-\x1F\x7F]/g, ""); // remove control chars
+}
+
 module.exports = {
   isIPAddress,
   getProjectPort,
@@ -902,4 +920,5 @@ module.exports = {
   runNativePsqlQuery,
   formatDatabaseLiveDuration,
   parsePGDatabaseSize,
+  cleanSqlQuery,
 };

@@ -87,6 +87,10 @@ const disconnectIdlePgConnectionValidationSchema = Joi.object({
   pid: Joi.string().required(),
 });
 
+const databaseQueryValidationSchema = Joi.object({
+  query: Joi.string().required(),
+});
+
 module.exports = {
   createUserValidationSchema,
   loginValidationSchema,
@@ -101,4 +105,5 @@ module.exports = {
   redisClientAdminOptionValidationSchema,
   databaseCredentialsValidationSchema,
   disconnectIdlePgConnectionValidationSchema,
+  databaseQueryValidationSchema,
 };
