@@ -870,13 +870,24 @@ function formatDatabaseLiveDuration(timeStr) {
   return `${days}d ${hrs}h ${mins}m`;
 }
 
-function parsePGDatabaseSize(sizeStr) {
-  const [value, unit] = sizeStr.split(" ");
-  const n = parseFloat(value);
-  if (unit === "kB") return n * 1024;
-  if (unit === "MB") return n * 1024 * 1024;
-  if (unit === "GB") return n * 1024 * 1024 * 1024;
-  return n; // In bytes
+function convertBytesToHumanReadableFileSize(byteStr) {
+  let bytes = parseFloat(byteStr);
+
+  if (isNaN(bytes) || bytes < 0) {
+    return "Invalid input";
+  }
+
+  if (bytes === 0) {
+    return "0 Bytes";
+  }
+
+  const units = ["Bytes", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
+  const base = 1024;
+
+  const index = Math.floor(Math.log(bytes) / Math.log(base));
+  const value = (bytes / Math.pow(base, index)).toFixed(2);
+
+  return `${value} ${units[index]}`;
 }
 
 function cleanSqlQuery(query) {
@@ -919,6 +930,6 @@ module.exports = {
   getPostgresCredentials,
   runNativePsqlQuery,
   formatDatabaseLiveDuration,
-  parsePGDatabaseSize,
+  convertBytesToHumanReadableFileSize,
   cleanSqlQuery,
 };

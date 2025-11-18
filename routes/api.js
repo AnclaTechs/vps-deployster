@@ -25,6 +25,8 @@ const {
   getPostgresClusterAnalytics,
   disconnectIdlePgConnection,
   runPgDbQuery,
+  getPgDatabaseQuickSummary,
+  getPgTableQuickSummary,
 } = require("../controllers");
 const { authenticateUser, pgDBValidator } = require("../middlewares");
 var router = express.Router();
@@ -124,6 +126,20 @@ router.post(
   authenticateUser,
   pgDBValidator,
   runPgDbQuery
+);
+
+router.get(
+  "/database/postgres/:cluster/:database/analytics",
+  authenticateUser,
+  pgDBValidator,
+  getPgDatabaseQuickSummary
+);
+
+router.get(
+  "/database/postgres/:cluster/:database/:schema/:table/data-view",
+  authenticateUser,
+  pgDBValidator,
+  getPgTableQuickSummary
 );
 
 module.exports = router;

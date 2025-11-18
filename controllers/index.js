@@ -49,7 +49,7 @@ const {
   getPostgresCredentials,
   runNativePsqlQuery,
   formatDatabaseLiveDuration,
-  parsePGDatabaseSize,
+  convertBytesToHumanReadableFileSize,
   cleanSqlQuery,
 } = require("../utils/functools");
 const {
@@ -1956,7 +1956,7 @@ async function getPostgresClusterAnalytics(req, res) {
 
     var query = `SELECT 
     datname,
-    pg_size_pretty(pg_database_size(datname)) AS size
+    pg_database_size(datname) AS size
     FROM pg_database WHERE datallowconn;
   `;
 
@@ -1976,16 +1976,13 @@ async function getPostgresClusterAnalytics(req, res) {
       .filter(Boolean)
       .map((line) => {
         const [datname, size] = line.split("|");
-        const sizeInBytes = parsePGDatabaseSize(size);
-        totalBytes += sizeInBytes;
         return {
           datname,
-          size: `${Number(sizeInBytes / (1024 * 1024)).toFixed(2)}MB`,
+          size: convertBytesToHumanReadableFileSize(size),
         };
       });
 
-    const totalMB = totalBytes / (1024 * 1024);
-    const totalClusterSize = `${Number(totalMB).toFixed(2)}MB`;
+    const totalClusterSize = convertBytesToHumanReadableFileSize(totalBytes);
 
     const analytics = {
       clusterFullName,
@@ -2043,17 +2040,200 @@ async function disconnectIdlePgConnection(req, res) {
       return res.json({
         success: true,
         message: `Connection ${pid} terminated.`,
+        dbVisualiserAuthRequired: false,
       });
     } else {
       return res.status(503).json({
         success: false,
         message: `Failed to terminate connection ${pid}.`,
+        dbVisualiserAuthRequired: false,
       });
     }
   } catch (error) {
     return res
       .status(500)
       .json({ status: false, message: "Internal server error" });
+  }
+}
+
+async function getPgDatabaseQuickSummary(req, res) {
+  try {
+    const pgData = req.pgData;
+    const database = req.params?.database;
+
+    const tableListQuery = `
+      SELECT
+        n.nspname AS schema,
+        c.relname AS table_name,
+        c.reltuples AS row_count,
+        pg_total_relation_size(c.oid) AS total_size
+      FROM pg_class AS c
+      JOIN pg_namespace AS n ON n.oid = c.relnamespace
+      WHERE c.relkind = 'r'
+      ORDER BY pg_total_relation_size(c.oid) DESC;
+      `;
+
+    var output = await runNativePsqlQuery({
+      host: "localhost",
+      port: pgData.clusterPort,
+      user: pgData.pgCredentials.username,
+      password: pgData.pgCredentials.password,
+      database,
+      query: tableListQuery,
+      csvOutput: true,
+    });
+
+    tables = await csvParse(output, {
+      columns: true,
+      skip_empty_lines: true,
+    });
+
+    const updatedTables = await Promise.all(
+      tables.map(async (data) => {
+        if (
+          data.schema === "public" &&
+          data.row_count != null &&
+          Number(data.row_count) < 100_000
+        ) {
+          try {
+            const tableRowCount = await runNativePsqlQuery({
+              host: "localhost",
+              port: pgData.clusterPort,
+              user: pgData.pgCredentials.username,
+              password: pgData.pgCredentials.password,
+              database,
+              query: `SELECT COUNT(*) AS row_count FROM ${data.table_name}`,
+            });
+
+            return {
+              ...data,
+              row_count: tableRowCount ?? data.row_count,
+              total_size: convertBytesToHumanReadableFileSize(data.total_size),
+            };
+          } catch (error) {
+            //console.error(`Error querying ${data.table_name}:`, error);
+            return {
+              ...data,
+              total_size: convertBytesToHumanReadableFileSize(data.total_size),
+            };
+          }
+        } else {
+          return {
+            ...data,
+            total_size: convertBytesToHumanReadableFileSize(data.total_size),
+          };
+        }
+      })
+    );
+
+    tables = updatedTables;
+
+    const indexQuery = `
+      SELECT
+          n.nspname AS schema,
+          t.relname AS table_name,
+          i.relname AS index_name,
+          pg_get_indexdef(i.oid) AS definition,
+          pg_size_pretty(pg_relation_size(i.oid)) AS index_size,
+
+          CASE
+              WHEN ix.indisunique THEN 'UNIQUE'
+              ELSE 'NON-UNIQUE'
+          END AS uniqueness,
+
+          CASE
+              WHEN pg_get_indexdef(i.oid) ILIKE '%USING btree%'  THEN 'BTREE'
+              WHEN pg_get_indexdef(i.oid) ILIKE '%USING gin%'    THEN 'GIN'
+              WHEN pg_get_indexdef(i.oid) ILIKE '%USING gist%'   THEN 'GIST'
+              WHEN pg_get_indexdef(i.oid) ILIKE '%USING spgist%' THEN 'SPGIST'
+              WHEN pg_get_indexdef(i.oid) ILIKE '%USING hash%'   THEN 'HASH'
+              ELSE 'OTHER'
+          END AS index_type,
+
+          CASE
+              WHEN EXISTS (
+                  SELECT 1
+                  FROM pg_constraint c
+                  WHERE c.conindid = i.oid
+                    AND c.contype = 'p'
+              )
+              THEN 'YES'
+              ELSE 'NO'
+          END AS is_primary_key
+
+      FROM pg_index ix
+      JOIN pg_class t ON t.oid = ix.indrelid              -- table
+      JOIN pg_class i ON i.oid = ix.indexrelid            -- index
+      JOIN pg_namespace n ON n.oid = t.relnamespace        -- schema
+      WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+      ORDER BY n.nspname, t.relname, i.relname;
+    `;
+
+    var output = await runNativePsqlQuery({
+      host: "localhost",
+      port: pgData.clusterPort,
+      user: pgData.pgCredentials.username,
+      password: pgData.pgCredentials.password,
+      database,
+      query: indexQuery,
+      csvOutput: true,
+    });
+
+    indexes = await csvParse(output, {
+      columns: true,
+      skip_empty_lines: true,
+    });
+
+    const constraintQuery = `
+      SELECT
+        con.conname AS constraint_name,
+        CASE con.contype
+          WHEN 'p' THEN 'PRIMARY KEY'::text
+          WHEN 'f' THEN 'FOREIGN KEY'::text
+          WHEN 'u' THEN 'UNIQUE'::text
+          WHEN 'c' THEN 'CHECK'::text
+          WHEN 'x' THEN 'EXCLUSION'::text
+          ELSE con.contype
+        END AS constraint_description,
+        nsp.nspname AS schema,
+        rel.relname AS table_name,
+        pg_get_constraintdef(con.oid) AS definition
+      FROM pg_constraint con
+      JOIN pg_class rel ON rel.oid = con.conrelid
+      JOIN pg_namespace nsp ON nsp.oid = rel.relnamespace
+      ORDER BY nsp.nspname, rel.relname, con.conname;
+    `;
+
+    var output = await runNativePsqlQuery({
+      host: "localhost",
+      port: pgData.clusterPort,
+      user: pgData.pgCredentials.username,
+      password: pgData.pgCredentials.password,
+      database,
+      query: constraintQuery,
+      csvOutput: true,
+    });
+
+    const constraints = await csvParse(output, {
+      columns: true,
+      skip_empty_lines: true,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: `Data returned successfully.`,
+      data: {
+        tables,
+        indexes,
+        constraints,
+      },
+      dbVisualiserAuthRequired: false,
+    });
+  } catch (error) {
+    console.error("Analytics error:", error);
+    return res
+      .status(500)
+      .json({ status: false, message: "Internal server error", data: {} });
   }
 }
 
@@ -2159,6 +2339,130 @@ async function runPgDbQuery(req, res) {
   }
 }
 
+async function getPgTableQuickSummary(req, res) {
+  try {
+    const pgData = req.pgData;
+    const database = req.params?.database;
+    const schema = req.params?.schema;
+    const table = req.params?.table;
+
+    const tableListQuery = `
+      SELECT
+        c.relname AS table_name,
+        c.reltuples::bigint AS row_count,
+        pg_total_relation_size(c.oid) AS size
+      FROM pg_class c
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = '${schema}'
+        AND c.relname = '${table}'
+        AND c.relkind = 'r';
+      `;
+
+    var output = await runNativePsqlQuery({
+      host: "localhost",
+      port: pgData.clusterPort,
+      user: pgData.pgCredentials.username,
+      password: pgData.pgCredentials.password,
+      database,
+      query: tableListQuery,
+      csvOutput: true,
+    });
+
+    const tableData = await csvParse(output, {
+      columns: true,
+      skip_empty_lines: true,
+    })[0];
+
+    const rowCount = Number(tableData?.row_count);
+
+    if (rowCount && rowCount < 100_000) {
+      const tableRowCount = await runNativePsqlQuery({
+        host: "localhost",
+        port: pgData.clusterPort,
+        user: pgData.pgCredentials.username,
+        password: pgData.pgCredentials.password,
+        database,
+        query: `SELECT COUNT(*) AS row_count FROM ${table}`,
+      });
+
+      tableData.row_count = tableRowCount;
+    }
+
+    tableData.size = convertBytesToHumanReadableFileSize(tableData.size);
+
+    const metaDataQuery = `
+    SELECT
+        cols.column_name,
+        format_type(a.atttypid, a.atttypmod) AS formatted_data_type,
+        cols.udt_name,
+        cols.data_type,
+        cols.character_maximum_length AS max_length,
+        cols.numeric_precision AS precision,
+        cols.numeric_scale AS scale,
+        cols.is_nullable,
+        cols.column_default,
+        pgd.description,
+        CASE 
+            WHEN pk.column_name IS NOT NULL THEN true 
+            ELSE false 
+        END AS is_primary_key
+    FROM information_schema.columns cols
+    JOIN pg_class c ON c.relname = cols.table_name
+    JOIN pg_attribute a 
+         ON a.attrelid = c.oid 
+        AND a.attname = cols.column_name
+    LEFT JOIN pg_catalog.pg_statio_all_tables st 
+         ON st.relname = cols.table_name
+    LEFT JOIN pg_catalog.pg_description pgd 
+         ON pgd.objoid = st.relid 
+        AND pgd.objsubid = cols.ordinal_position
+    LEFT JOIN (
+        SELECT 
+            kcu.column_name
+        FROM information_schema.table_constraints tc
+        JOIN information_schema.key_column_usage kcu
+            ON tc.constraint_name = kcu.constraint_name
+        WHERE tc.table_schema = '${schema}'
+          AND tc.table_name = '${table}'
+          AND tc.constraint_type = 'PRIMARY KEY'
+    ) pk ON pk.column_name = cols.column_name
+    WHERE cols.table_schema = '${schema}'
+      AND cols.table_name = '${table}'
+    ORDER BY cols.ordinal_position;
+`;
+
+    var output = await runNativePsqlQuery({
+      host: "localhost",
+      port: pgData.clusterPort,
+      user: pgData.pgCredentials.username,
+      password: pgData.pgCredentials.password,
+      database,
+      query: metaDataQuery,
+      csvOutput: true,
+    });
+
+    const metaData = await csvParse(output, {
+      columns: true,
+      skip_empty_lines: true,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: `Data returned successfully.`,
+      data: {
+        table: tableData,
+        metaData,
+      },
+      dbVisualiserAuthRequired: false,
+    });
+  } catch (error) {
+    console.error("Analytics error:", error);
+    return res
+      .status(500)
+      .json({ status: false, message: "Internal server error", data: {} });
+  }
+}
+
 module.exports = {
   createUser,
   loginUser,
@@ -2185,4 +2489,6 @@ module.exports = {
   getPostgresClusterAnalytics,
   disconnectIdlePgConnection,
   runPgDbQuery,
+  getPgDatabaseQuickSummary,
+  getPgTableQuickSummary,
 };

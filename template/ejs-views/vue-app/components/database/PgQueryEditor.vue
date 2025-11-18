@@ -259,6 +259,10 @@ export default {
       type: Object,
       required: true,
     },
+    defaultQueryString: {
+      type: String,
+      required: true,
+    }
   },
   data() {
     return {
@@ -565,6 +569,11 @@ export default {
   },
   mounted() {
     this.initiateVueCodeMirror();
+    setTimeout(() => {
+      if(this.defaultQueryString){
+        this.setContent(this.defaultQueryString)
+      }
+    }, 500)
   },
   beforeUnmount() {
     if (queryEditor) queryEditor = null;
