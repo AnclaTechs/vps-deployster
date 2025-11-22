@@ -51,6 +51,10 @@ const {
   formatDatabaseLiveDuration,
   convertBytesToHumanReadableFileSize,
   cleanSqlQuery,
+  getCpuTopology,
+  getTopProcesses,
+  computeTopDiskFiles,
+  getSystemMonitorLog,
 } = require("../utils/functools");
 const {
   DEPLOYMENT_STATUS,
@@ -62,6 +66,9 @@ const {
 const jwtr = new JWTR(redisClient);
 const DEPLOYSTER_VPS_PUBLIC_IP =
   process.env.DEPLOYSTER_VPS_PUBLIC_IP || "127.0.0.1";
+
+const TOP_FILES_REDIS_KEY = "sysTopFiles:v1";
+const TOP_FILES_TTL = 60 * 60 * 6; // 6 hours
 
 async function createUser(req, res) {
   try {
@@ -2162,9 +2169,9 @@ async function getPgDatabaseQuickSummary(req, res) {
           END AS is_primary_key
 
       FROM pg_index ix
-      JOIN pg_class t ON t.oid = ix.indrelid              -- table
-      JOIN pg_class i ON i.oid = ix.indexrelid            -- index
-      JOIN pg_namespace n ON n.oid = t.relnamespace        -- schema
+      JOIN pg_class t ON t.oid = ix.indrelid
+      JOIN pg_class i ON i.oid = ix.indexrelid
+      JOIN pg_namespace n ON n.oid = t.relnamespace
       WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
       ORDER BY n.nspname, t.relname, i.relname;
     `;
@@ -2456,6 +2463,109 @@ async function getPgTableQuickSummary(req, res) {
       dbVisualiserAuthRequired: false,
     });
   } catch (error) {
+    return res
+      .status(500)
+      .json({ status: false, message: "Internal server error", data: {} });
+  }
+}
+
+async function getSysMonitorAnalytics(req, res) {
+  try {
+    const tsRange = req.query.tsRange || "15m";
+
+    // Get Computer name
+    var output = await runShell("hostname");
+    const hostname = output.trim();
+
+    // GET RAM
+    var output = await runShell("free -b");
+    const freeCheckOutput = output.trim();
+
+    var lines = freeCheckOutput
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean);
+    const memLine = lines.find((l) => l.toLowerCase().startsWith("mem:"));
+    if (!memLine) return null;
+    const parts = memLine.split(/\s+/);
+    const total = Number(parts[1]);
+    const used = Number(parts[2]);
+    const free = Number(parts[3]);
+    const available = Number(parts[6] ?? parts[3]);
+    const usedPercent = +((used / total) * 100).toFixed(2);
+
+    const ram = {
+      // default value from free is in MB; thus i have to convert to bytes first
+      total: convertBytesToHumanReadableFileSize(total),
+      used: convertBytesToHumanReadableFileSize(used),
+      free: convertBytesToHumanReadableFileSize(free),
+      available: convertBytesToHumanReadableFileSize(available),
+      used_percent: usedPercent,
+    };
+
+    // DISK USAGE
+    var output = await runShell("df --block-size=1 /");
+    const dfOut = output.trim();
+
+    var lines = dfOut
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean);
+    if (lines.length < 2) return null;
+    const cols = lines[1].split(/\s+/);
+    const diskUsage = {
+      filesystem: cols[0],
+      total: convertBytesToHumanReadableFileSize(cols[1]),
+      used: convertBytesToHumanReadableFileSize(cols[2]),
+      available: convertBytesToHumanReadableFileSize(cols[3]),
+      used_percent: cols[4],
+      mount: cols[5] ?? "/",
+    };
+
+    // CPU Topology
+    const cpuTopology = await getCpuTopology();
+
+    // TOP PROCESSES
+    const topProcesses = await getTopProcesses(20);
+
+    // TOP FILES
+    let topFiles = null;
+    // await redisClient.del(TOP_FILES_REDIS_KEY);
+    const cached = await redisClient.get(TOP_FILES_REDIS_KEY);
+    if (cached) {
+      topFiles = JSON.parse(cached);
+    } else {
+      // Trigger background computation, don't wait return empty for now
+      computeTopDiskFiles(20)
+        .then(async (rows) => {
+          await redisClient.set(
+            TOP_FILES_REDIS_KEY,
+            JSON.stringify(rows),
+            "EX",
+            TOP_FILES_TTL
+          );
+        })
+        .catch((e) => console.error("top files compute failed:", e));
+
+      topFiles = [];
+    }
+
+    // Sys Health Logger
+    const csvPath = path.resolve(__dirname, "../logs/ram-history.csv");
+    const tsSeries = await getSystemMonitorLog(csvPath, tsRange);
+
+    const payload = {
+      hostname,
+      ram,
+      disk: diskUsage,
+      cpu: cpuTopology,
+      top_processes: topProcesses,
+      top_files: topFiles,
+      timelog: tsSeries,
+    };
+
+    return res.json({ success: true, data: payload });
+  } catch (error) {
     console.error("Analytics error:", error);
     return res
       .status(500)
@@ -2491,4 +2601,5 @@ module.exports = {
   runPgDbQuery,
   getPgDatabaseQuickSummary,
   getPgTableQuickSummary,
+  getSysMonitorAnalytics,
 };

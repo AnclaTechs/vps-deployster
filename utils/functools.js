@@ -5,6 +5,7 @@ const moment = require("moment");
 const redis = require("redis");
 const path = require("path");
 const dotenv = require("dotenv");
+const { parse: csvParse } = require("csv-parse/sync");
 const { pool, getSingleRow } = require("@anclatechs/sql-buns");
 const { exec, execSync, spawn } = require("child_process");
 const {
@@ -903,6 +904,129 @@ function cleanSqlQuery(query) {
     .replace(/[\x00-\x1F\x7F]/g, ""); // remove control chars
 }
 
+async function getCpuTopology() {
+  // Assumption nproc => logical count
+
+  const nprocOut = await runShell("nproc");
+  const logical = Number(nprocOut.trim()) || null;
+  const lscpuOut = await runShell("lscpu");
+  const lscpuOutLines = lscpuOut.split("\n");
+  const lscpuMap = {};
+  for (const l of lscpuOutLines) {
+    const m = l.match(/^\s*([^:]+):\s*(.+)$/);
+    if (m) {
+      const key = m[1].trim();
+      const val = m[2].trim();
+      lscpuMap[key] = val;
+    }
+  }
+
+  const sockets =
+    Number(
+      (lscpuMap["Socket(s)"] || lscpuMap["Sockets"] || "1")
+        .toString()
+        .split(/\s+/)[0]
+    ) || 1;
+  const coresPerSocket =
+    Number(
+      (lscpuMap["Core(s) per socket"] || lscpuMap["Cores per socket"] || "0")
+        .toString()
+        .split(/\s+/)[0]
+    ) || 0;
+  const threadsPerCore =
+    Number(
+      (lscpuMap["Thread(s) per core"] || lscpuMap["Threads per core"] || "1")
+        .toString()
+        .split(/\s+/)[0]
+    ) || 1;
+  const physical = sockets * coresPerSocket;
+  const hyperthreaded =
+    logical !== null && physical ? Math.max(0, logical - physical) : null;
+
+  return {
+    logical_cpus: logical,
+    sockets,
+    cores_per_socket: coresPerSocket,
+    physical_cores: physical,
+    threads_per_core: threadsPerCore,
+    hyperthreaded_logical_extra: hyperthreaded,
+    lscpu_raw: lscpuMap,
+  };
+}
+
+async function getTopProcesses(limit = 20) {
+  const out = await runShell(
+    `ps -eo pid,comm,%mem,rss --sort=-%mem | head -n ${limit + 1}`
+  );
+  const lines = out
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+  // skipt first line containing header (PID COMMAND %MEM RSS)
+  const startIdx = lines[0] && lines[0].toLowerCase().includes("pid") ? 1 : 0;
+  const results = [];
+  for (let i = startIdx; i < Math.min(lines.length, startIdx + limit); i++) {
+    const row = lines[i].split(/\s+/, 4);
+    if (row.length >= 4) {
+      const pid = Number(row[0]);
+      const comm = row[1];
+      const percent = Number(row[2]);
+      const rssKb = Number(row[3]);
+      results.push({
+        pid,
+        process: comm,
+        memory_percentage: percent,
+        size: convertBytesToHumanReadableFileSize(rssKb * 1024), // in bytes
+      });
+    }
+  }
+  return results;
+}
+
+async function computeTopDiskFiles(limit = 20) {
+  const cmd = `find / -path /proc -prune -o -path /sys -prune -o -path /dev -prune -o -type f -printf '%s %p\\n' 2>/dev/null | sort -nr | head -n ${limit}`;
+  const out = await runShell(cmd);
+  const lines = out
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+  const rows = lines
+    .map((line) => {
+      const m = line.match(/^(\d+)\s+(.+)$/);
+      if (!m) return null;
+      const bytes = Number(m[1]);
+      const filepath = m[2];
+      return {
+        size: convertBytesToHumanReadableFileSize(bytes),
+        path: filepath,
+      };
+    })
+    .filter(Boolean);
+  return rows;
+}
+
+async function getSystemMonitorLog(csvPath, range = "15m") {
+  // range<option> ["15m", "30m", "1h", "7d", "30d"]
+  if (!fs.existsSync(csvPath)) return [];
+  const content = fs.readFileSync(csvPath, "utf8");
+  let lines; // This is the max record to be fetched. Assuming a record entry happens twice every minute
+  const now = Math.floor(Date.now() / 1000);
+  if (range.endsWith("m")) {
+    const minutes = Number(range.slice(0, -1)) || 30;
+    lines = minutes * 2; // i.e 2 records per minutes
+  } else if (range.endsWith("h")) {
+    const hours = Number(range.slice(0, -1)) || 1;
+    lines = hours * 120; // i.e 120 records per hour
+  } else if (range.endsWith("d")) {
+    const days = Number(range.slice(0, -1)) || 7;
+    lines = -days * 2880; // i.e 2880 reocords per day
+  } else {
+    lines = 450; // 15 minutes
+  }
+  const output = await runShell(`tail -n ${lines} ${csvPath}`);
+  return csvParse(output, { columns: false });
+}
+
 module.exports = {
   isIPAddress,
   getProjectPort,
@@ -932,4 +1056,8 @@ module.exports = {
   formatDatabaseLiveDuration,
   convertBytesToHumanReadableFileSize,
   cleanSqlQuery,
+  getCpuTopology,
+  getTopProcesses,
+  computeTopDiskFiles,
+  getSystemMonitorLog,
 };

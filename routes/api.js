@@ -27,6 +27,7 @@ const {
   runPgDbQuery,
   getPgDatabaseQuickSummary,
   getPgTableQuickSummary,
+  getSysMonitorAnalytics,
 } = require("../controllers");
 const { authenticateUser, pgDBValidator } = require("../middlewares");
 var router = express.Router();
@@ -141,5 +142,7 @@ router.get(
   pgDBValidator,
   getPgTableQuickSummary
 );
+
+router.get("/sys-monitor", authenticateUser, getSysMonitorAnalytics);
 
 module.exports = router;

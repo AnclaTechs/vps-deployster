@@ -46,6 +46,8 @@ const components = {
       "/vue/pages/database/PostgresDbVisualizer.vue",
       httpLoaderOption
     ),
+  MonitorDashboard: () =>
+    loadModule("/vue/pages/MonitorDashboard.vue", httpLoaderOption),
 };
 
 const routes = [
@@ -87,6 +89,12 @@ const routes = [
     path: "/database/postgres/:cluster/:database/visualizer",
     name: "PostgresDbVisualizer",
     component: components.PostgresDbVisualizer,
+    meta: { requiresAuth: true },
+  },
+  {
+    path: "/sys-monitor",
+    name: "MonitorDashboard",
+    component: components.MonitorDashboard,
     meta: { requiresAuth: true },
   },
 ];

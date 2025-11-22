@@ -13,6 +13,17 @@
           Dashboard
         </li>
 
+        <li
+          @click="navigate('sys-monitor')"
+          :class="{ active: isActive('sys-monitor') }"
+        >
+          <img
+            src="https://www.svgrepo.com/show/450407/analytics.svg"
+            class="menu-icon"
+          />
+          Monitor
+        </li>
+
         <li @click="toggleSection('dbs')" :class="['section', {active: isActive('postgres')}]">
           <img
             src="https://www.svgrepo.com/show/485254/database.svg"
