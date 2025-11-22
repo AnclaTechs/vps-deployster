@@ -133,7 +133,7 @@ export default {
       port: "",
       modalInstance: null,
       loading: false,
-      selectedCluster: this.clusterInSession || {},
+      selectedCluster: this.clusterInSession || {port : ""},
       selectClusterDisabled: false,
     };
   },

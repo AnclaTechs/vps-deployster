@@ -137,7 +137,9 @@
               <i class="bi bi-database-fill"></i> {{ db.datname }} —
               {{ db.size }}
             </span>
-            <span class="badge rounded-pill bg-secondary px-3 py-2">
+            <span v-if="!showAllDatabases" class="badge rounded-pill bg-secondary px-3 py-2 cursor-pointer"
+            @click="showAllDatabases = !showAllDatabases"
+            >
               +{{ databases.length - 3 }} more
             </span>
           </div>

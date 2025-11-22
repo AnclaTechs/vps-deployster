@@ -331,7 +331,7 @@
               style="max-height: 350px"
             ></canvas>
 
-            <div class="mt-3 text-center">
+            <div v-if="initialGraphLoaded" class="mt-3 text-center">
               <small
                 :class="[
                   'fw-medium',

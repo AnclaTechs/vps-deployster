@@ -1983,6 +1983,7 @@ async function getPostgresClusterAnalytics(req, res) {
       .filter(Boolean)
       .map((line) => {
         const [datname, size] = line.split("|");
+        totalBytes += Number(size);
         return {
           datname,
           size: convertBytesToHumanReadableFileSize(size),
