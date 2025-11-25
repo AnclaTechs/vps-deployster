@@ -37,7 +37,11 @@
               </div>
             </div>
             <div v-else class="mt-3 mb-3">
-              <div v-if="totpFormAlert" class="alert alert-info" v-html="totpFormAlert"></div>
+              <div
+                v-if="totpFormAlert"
+                class="alert alert-info"
+                v-html="totpFormAlert"
+              ></div>
               <input
                 type="text"
                 v-model="totp"
@@ -46,7 +50,6 @@
                 required
                 autocomplete="off"
               />
-
             </div>
 
             <a
@@ -100,6 +103,7 @@ module.exports = {
       password: "",
       showTotpForm: false,
       totpFormAlert: "",
+      totpFormRevertInterval: null,
       totp: "",
       quotes: [
         {
@@ -232,14 +236,22 @@ module.exports = {
         )
         .then((res) => {
           const userData = res.data.data;
-          if(userData.action?.required){
-            this.totpFormAlert = userData.action.message
-            this.showTotpForm = true
-          this.loading = false;
-          }else{
-          this.$store.commit("updateUserData", userData);
+          if (userData.action?.required) {
+            this.totpFormAlert = userData.action.message;
+            this.showTotpForm = true;
+            this.totpFormRevertInterval = setInterval(() => {
+              // FIVE MINUTES REVERSION TIME
+              this.showTotpForm = false;
+              this.username = ""
+              this.password = ""
+            }, 1000 * 60 * 5);
+            this.loading = false;
+          } else {
+            if (this.totpFormRevertInterval) {
+              clearInterval(this.totpFormRevertInterval);
+            }
+            this.$store.commit("updateUserData", userData);
             this.$router.push("/dashboard");
-
           }
         })
         .catch((err) => {
@@ -254,6 +266,11 @@ module.exports = {
           this.loading = false;
         });
     },
+  },
+  beforeUnmount() {
+    if (this.totpFormRevertInterval) {
+      clearInterval(this.totpFormRevertInterval);
+    }
   },
 };
 </script>

@@ -135,6 +135,12 @@ async function createUser(req, res) {
 }
 
 async function loginUser(req, res) {
+  const MAX_INVALID_LOGIN_ATTEMPTS = Number(
+    process.env.DEPLOYSTER_MAX_LOGIN_ATTEMPTS_BEFORE_LOCK || 10
+  );
+  const LOCK_TIME =
+    60 * Number(process.env.DEPLOYSTER_INVALID_LOGIN_LOCKOUT_TIME || 60); // 60 Minutes Default
+
   try {
     const { error } = loginValidationSchema.validate(req.body);
     if (error) {
@@ -171,12 +177,43 @@ async function loginUser(req, res) {
       }
     }
 
+    const failedKey = `login:fail:${user.id}`;
+    const lockKey = `login:lock:${user.id}`;
+
+    const accountIsLocked = await ioRedisClient.get(lockKey);
+    if (accountIsLocked) {
+      return res.status(403).json({
+        status: false,
+        message:
+          "Account temporarily locked due to multiple failed login attempts.",
+      });
+    }
+
     const passwordMatch = await bcrypt.compare(password, user.password);
     if (!passwordMatch) {
+      const failedAttempts = await ioRedisClient.incr(failedKey);
+
+      if (failedAttempts == 1) {
+        await ioRedisClient.expire(failedKey, LOCK_TIME);
+      }
+
+      if (failedAttempts >= MAX_INVALID_LOGIN_ATTEMPTS) {
+        await ioRedisClient.set(lockKey, "1", "EX", LOCK_TIME);
+        await ioRedisClient.del(failedKey);
+        return res.status(403).json({
+          status: false,
+          message:
+            "Account temporarily locked due to multiple failed login attempts.",
+        });
+      }
+
       return res
         .status(401)
         .json({ status: false, message: "Invalid email or password" });
     }
+
+    await ioRedisClient.del(failedKey);
+    await ioRedisClient.del(lockKey);
 
     if (user.totp_secret) {
       if (!totp) {
