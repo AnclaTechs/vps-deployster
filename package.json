@@ -34,6 +34,7 @@
     "@anclatechs/sql-buns": "^1.0.7",
     "@anclatechs/sql-buns-migrate": "^1.0.11",
     "bcrypt": "^6.0.0",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "csv-parse": "^6.1.0",
     "dotenv": "^16.5.0",

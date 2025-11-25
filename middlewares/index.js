@@ -35,7 +35,7 @@ async function findUserByDecodedToken(decoded) {
 }
 
 async function authenticateUser(req, res, next) {
-  const token = req.headers.authorization;
+  const token = req.cookies.token;
 
   if (!token) {
     return res.status(401).json({ error: "Unauthorized: No token provided" });

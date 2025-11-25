@@ -5,6 +5,7 @@ const path = require("path");
 const expressLayout = require("express-ejs-layouts");
 const express = require("express");
 const cors = require("cors");
+const cookieParser = require("cookie-parser");
 const { ioRedisClient } = require("./redis");
 const app = express();
 const DEPLOYSTER_PORT = process.env.DEPLOYSTER_PORT || 3259;
@@ -34,7 +35,7 @@ app.set("views", path.join(__dirname, "template/ejs-views"));
 app.use(expressLayout);
 app.set("view engine", "ejs");
 app.use("/public", express.static(path.join(__dirname, "public")));
-
+app.use(cookieParser());
 app.use(cors());
 // BODY PARSER => application/json
 app.use(express.json());

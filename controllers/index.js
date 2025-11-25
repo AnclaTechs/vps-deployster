@@ -71,6 +71,7 @@ const {
 const signals = require("../signals");
 const { Users } = require("../database/models");
 const jwtr = new JWTR(redisClient);
+const isProduction = process.env.NODE_ENV === "production";
 const DEPLOYSTER_VPS_PUBLIC_IP =
   process.env.DEPLOYSTER_VPS_PUBLIC_IP || "127.0.0.1";
 
@@ -221,7 +222,6 @@ async function loginUser(req, res) {
           status: true,
           message: "Action required",
           data: {
-            token: null,
             action: {
               required: true,
               message: `Input 2FA code from <strong>${user.authenticator_label}</strong>`,
@@ -245,11 +245,16 @@ async function loginUser(req, res) {
             timestamp: new Date().toISOString(),
           });
 
+          res.cookie("token", token, {
+            httpOnly: true,
+            secure: isProduction,
+            sameSite: isProduction ? "strict" : "lax",
+          });
+
           return res.json({
             status: true,
             message: "Login successful",
             data: {
-              token: token,
               action: null,
               user: {
                 username: user.username,
@@ -263,7 +268,6 @@ async function loginUser(req, res) {
             status: false,
             message: "Invalid Authenticator code",
             data: {
-              token: null,
               action: {
                 required: true,
                 message: `Input 2FA code from ${user.authenticator_label}`,
@@ -284,6 +288,12 @@ async function loginUser(req, res) {
         { expiresIn: "1d" }
       );
 
+      res.cookie("token", token, {
+        httpOnly: true,
+        secure: isProduction,
+        sameSite: isProduction ? "strict" : "lax",
+      });
+
       signals.emit("updateUserLastActivityTime", {
         userId: user.id,
         timestamp: new Date().toISOString(),
@@ -293,7 +303,6 @@ async function loginUser(req, res) {
         status: true,
         message: "Login successful",
         data: {
-          token: token,
           action: null,
           user: {
             username: user.username,
@@ -313,7 +322,7 @@ async function loginUser(req, res) {
 
 async function logoutUser(req, res) {
   try {
-    const token = req.headers.authorization;
+    const token = req.cookies.token;
 
     const verified = await jwtr.decode(token, process.env.JSON_WEB_TOKE_KEY);
     await jwtr.destroy(verified.jti);

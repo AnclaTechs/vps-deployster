@@ -2,6 +2,8 @@ const { createApp, ref, defineAsyncComponent, defineComponent } = Vue;
 const { createStore } = Vuex;
 const { createRouter, createWebHashHistory } = VueRouter;
 const { loadModule } = window["vue3-sfc-loader"];
+// Axios root setup
+axios.defaults.withCredentials = true;
 
 const httpLoaderOption = {
   moduleCache: {
@@ -122,33 +124,20 @@ router.afterEach(() => {
 const store = createStore({
   state: {
     showLoader: true,
-    userData: { token: null },
+    userData: null,
     headers: {
       headers: {
         "Content-Type": "application/json",
         Accept: "application/json",
-        Authorization: localStorage.getItem("token", null),
       },
     },
   },
   mutations: {
     updateUserData(state, object) {
       state.userData = object?.user;
-      if (object?.token) {
-        state.headers["headers"]["Authorization"] = object?.token;
-        localStorage.setItem("token", object.token);
-      }
     },
     resetUserData(state) {
-      state.userData = { token: null };
-      state.headers = {
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-          Authorization: null,
-        },
-      };
-      localStorage.removeItem("token");
+      state.userData = null;
     },
     setLoader(state, status) {
       state.showLoader = status;
@@ -198,12 +187,6 @@ app.config.globalProperties.$checkAuthentication = async function () {
   let currentPath = router.currentRoute.value.path;
 
   if (currentPath !== "/login") {
-    if (!localStorage.getItem("token")) {
-      router.push("/login");
-      toastr.error("Invalid authentication details");
-      return;
-    }
-
     try {
       const res = await axios.get(
         `${this.$BACKEND_BASE_URL}/user`,
