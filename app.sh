@@ -1,7 +1,9 @@
 #!/bin/bash
 
+COMMAND=${1:-dev}
+
 echo "Starting server..."
-yarn dev &
+yarn $COMMAND &
 SERVER_PID=$!
 
 echo "Server PID: $SERVER_PID"
