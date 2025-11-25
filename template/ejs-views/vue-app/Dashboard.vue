@@ -523,11 +523,6 @@ module.exports = {
       });
     }
   },
-  beforeMount() {
-    if (this.$route.meta.requiresAuth) {
-      this.$checkAuthentication();
-    }
-  },
   beforeUnmount() {
     this.resetTerminalSession();
   },

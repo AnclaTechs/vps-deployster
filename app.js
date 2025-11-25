@@ -5,7 +5,7 @@ const path = require("path");
 const expressLayout = require("express-ejs-layouts");
 const express = require("express");
 const cors = require("cors");
-const redisClient = require("./redis");
+const { ioRedisClient } = require("./redis");
 const app = express();
 const DEPLOYSTER_PORT = process.env.DEPLOYSTER_PORT || 3259;
 const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS || "*";
@@ -85,29 +85,29 @@ app.post("/deploy", async (req, res) => {
 
   if (!commit_hash) {
     // FOR version 1.0 BACKWARD COMPACTIBILITY
-    await redisClient.set(`job:${job_id}:status`, "queued");
-    await redisClient.del(`job:${job_id}:logs`);
+    await ioRedisClient.set(`job:${job_id}:status`, "queued");
+    await ioRedisClient.del(`job:${job_id}:logs`);
 
     res.json({ job_id });
 
     (async () => {
-      await redisClient.set(`job:${job_id}:status`, "running");
+      await ioRedisClient.set(`job:${job_id}:status`, "running");
       for (let i = 0; i < commands.length; i++) {
         const command = `cd ${cd} && ${commands[i]}`;
-        await redisClient.append(
+        await ioRedisClient.append(
           `job:${job_id}:logs`,
           `\n[${i + 1}] $ ${commands[i]}\n`
         );
         try {
           const output = await runShell(command);
-          await redisClient.append(`job:${job_id}:logs`, output);
+          await ioRedisClient.append(`job:${job_id}:logs`, output);
         } catch (err) {
-          await redisClient.append(`job:${job_id}:logs`, `[ERROR] ${err}\n`);
-          await redisClient.set(`job:${job_id}:status`, "failed");
+          await ioRedisClient.append(`job:${job_id}:logs`, `[ERROR] ${err}\n`);
+          await ioRedisClient.set(`job:${job_id}:status`, "failed");
           return;
         }
       }
-      await redisClient.set(`job:${job_id}:status`, "complete");
+      await ioRedisClient.set(`job:${job_id}:status`, "complete");
     })();
     return;
   }
@@ -146,7 +146,7 @@ app.post("/deploy", async (req, res) => {
       );
       try {
         deploymentLockKey = `lock:deploy:${projectInView.id}`;
-        const acquired = await redisClient.set(
+        const acquired = await ioRedisClient.set(
           deploymentLockKey,
           "locked",
           "NX",
@@ -210,13 +210,13 @@ app.post("/deploy", async (req, res) => {
     console.error("Error recording deployment log:", error);
   }
 
-  await redisClient.set(`job:${job_id}:status`, "queued");
-  await redisClient.del(`job:${job_id}:logs`);
+  await ioRedisClient.set(`job:${job_id}:status`, "queued");
+  await ioRedisClient.del(`job:${job_id}:logs`);
 
   res.json({ job_id });
 
   (async () => {
-    await redisClient.set(`job:${job_id}:status`, "running");
+    await ioRedisClient.set(`job:${job_id}:status`, "running");
 
     // VALIDATE LAST COMMAND
     // Check that the last command includes supervisorctl start or supervisorctl restart:
@@ -224,8 +224,8 @@ app.post("/deploy", async (req, res) => {
     if (!/supervisorctl\s+(start|restart)\s+[\w\-]+/.test(lastCommand)) {
       const errorOutput =
         "[ERROR] Last command must be a 'supervisorctl start|restart'. Aborting...\n";
-      await redisClient.set(`job:${job_id}:status`, "failed");
-      await redisClient.append(`job:${job_id}:logs`, errorOutput);
+      await ioRedisClient.set(`job:${job_id}:status`, "failed");
+      await ioRedisClient.append(`job:${job_id}:logs`, errorOutput);
       if (deploymentRecord) {
         await addLogToDeploymentRecord(deploymentRecord.id, errorOutput);
         await markDeploymentAsComplete(
@@ -273,17 +273,17 @@ app.post("/deploy", async (req, res) => {
       const formattedCommand = `\n[${i + 1}] $ ${
         fullDeploymentCommandList[i]
       }\n`;
-      await redisClient.append(`job:${job_id}:logs`, formattedCommand);
+      await ioRedisClient.append(`job:${job_id}:logs`, formattedCommand);
 
       try {
         const output = await runShell(command);
-        await redisClient.append(`job:${job_id}:logs`, output);
+        await ioRedisClient.append(`job:${job_id}:logs`, output);
         if (deploymentRecord)
           await addLogToDeploymentRecord(deploymentRecord.id, output);
       } catch (err) {
         const errorOutput = `[ERROR] ${err}\n`;
-        await redisClient.append(`job:${job_id}:logs`, errorOutput);
-        await redisClient.set(`job:${job_id}:status`, "failed");
+        await ioRedisClient.append(`job:${job_id}:logs`, errorOutput);
+        await ioRedisClient.set(`job:${job_id}:status`, "failed");
         if (deploymentRecord) {
           await addLogToDeploymentRecord(deploymentRecord.id, errorOutput);
           await markDeploymentAsComplete(
@@ -296,7 +296,7 @@ app.post("/deploy", async (req, res) => {
         return;
       }
     }
-    await redisClient.set(`job:${job_id}:status`, "complete");
+    await ioRedisClient.set(`job:${job_id}:status`, "complete");
     await markDeploymentAsComplete(
       deploymentRecord.id,
       DEPLOYMENT_STATUS.COMPLETED,
@@ -318,7 +318,7 @@ app.post("/deploy", async (req, res) => {
 
     // STORE ARTIFACT
     var newLogMessage = "\nCompressing artifact\n";
-    await redisClient.set(`job:${job_id}:logs`, newLogMessage);
+    await ioRedisClient.set(`job:${job_id}:logs`, newLogMessage);
     await addLogToDeploymentRecord(deploymentRecord.id, newLogMessage);
     const cleanCdPath = cd
       .replace(/^\/*|\/*$/g, "") // Remove leading/trailing slashes
@@ -336,18 +336,18 @@ app.post("/deploy", async (req, res) => {
     try {
       // await fs.mkdir(artifactDir, { recursive: true });
       var newLogMessage = await runShell(`mkdir -p ${artifactDir}`);
-      await redisClient.set(`job:${job_id}:logs`, newLogMessage);
+      await ioRedisClient.set(`job:${job_id}:logs`, newLogMessage);
       await addLogToDeploymentRecord(deploymentRecord.id, newLogMessage);
 
       // Create archive -- excluding git to prevent future conflict
       var newLogMessage = await runShell(
         `tar -czf ${artifactPath} --exclude=".git" -C "${cd}" .`
       );
-      await redisClient.set(`job:${job_id}:logs`, newLogMessage);
+      await ioRedisClient.set(`job:${job_id}:logs`, newLogMessage);
       await addLogToDeploymentRecord(deploymentRecord.id, newLogMessage);
 
       var newLogMessage = `\n[INFO] Artifact created at ${artifactPath}\n`;
-      await redisClient.append(`job:${job_id}:logs`, newLogMessage);
+      await ioRedisClient.append(`job:${job_id}:logs`, newLogMessage);
       await addLogToDeploymentRecord(deploymentRecord.id, newLogMessage);
 
       await markDeploymentAsComplete(
@@ -359,7 +359,7 @@ app.post("/deploy", async (req, res) => {
       );
     } catch (err) {
       var newLogMessage = `[WARN] Artifact generation failed: ${err.message}\n`;
-      await redisClient.append(`job:${job_id}:logs`, newLogMessage);
+      await ioRedisClient.append(`job:${job_id}:logs`, newLogMessage);
       await addLogToDeploymentRecord(deploymentRecord.id, newLogMessage);
     }
   })();
@@ -376,13 +376,13 @@ app.get("/status/:job_id", async (req, res) => {
     /** PROCEED */
   }
   const job_id = req.params.job_id;
-  const status = await redisClient.get(`job:${job_id}:status`);
-  const logs = await redisClient.get(`job:${job_id}:logs`);
+  const status = await ioRedisClient.get(`job:${job_id}:status`);
+  const logs = await ioRedisClient.get(`job:${job_id}:logs`);
 
   if (!status) return res.status(404).json({ status: "not_found" });
 
   // Clear the logs from Redis after sending them
-  await redisClient.del(`job:${job_id}:logs`);
+  await ioRedisClient.del(`job:${job_id}:logs`);
 
   res.json({ status, logs: logs || "" });
 });

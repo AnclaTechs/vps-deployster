@@ -1,17 +1,30 @@
-const Redis = require("ioredis");
-const REDIS_DEPLOYSTER_PORT = process.env.REDIS_DEPLOYSTER_PORT || 6379;
-const REDIS_HOST = process.env.REDIS_HOST || "localhost";
-const REDIS_URL = process.env.REDIS_URL;
+const IORedis = require("ioredis");
 
-let redisClient;
+const { createClient } = require("redis");
+
+const REDIS_PORT = process.env.DEPLOYSTER_REDIS_PORT || 6379;
+const REDIS_HOST = process.env.DEPLOYSTER_REDIS_HOST || "localhost";
+const REDIS_URL = process.env.DEPLOYSTER_REDIS_URL;
+
+let ioRedisClient;
 
 if (REDIS_URL) {
-  redisClient = new Redis(REDIS_URL);
+  ioRedisClient = new IORedis(REDIS_URL);
 } else {
-  redisClient = new Redis({
-    port: REDIS_DEPLOYSTER_PORT,
+  ioRedisClient = new IORedis({
+    port: REDIS_PORT,
     host: REDIS_HOST,
   });
 }
 
-module.exports = redisClient;
+//
+let redisClient = createClient({
+  url: REDIS_URL || `redis://${REDIS_HOST}:${REDIS_PORT}`,
+});
+
+redisClient.connect().catch(console.error);
+
+module.exports = {
+  ioRedisClient,
+  redisClient,
+};

@@ -10,6 +10,7 @@ const createUserValidationSchema = Joi.object({
 const loginValidationSchema = Joi.object({
   username: Joi.string().required(),
   password: Joi.string().required(),
+  totp: Joi.string().allow(""),
 });
 
 const updateProjectValidationSchema = Joi.object({
@@ -91,6 +92,12 @@ const databaseQueryValidationSchema = Joi.object({
   query: Joi.string().required(),
 });
 
+const mfaSetupValidationSchema = Joi.object({
+  secret_base32: Joi.string().required(),
+  label: Joi.string().required(),
+  totp: Joi.string().required(),
+});
+
 module.exports = {
   createUserValidationSchema,
   loginValidationSchema,
@@ -106,4 +113,5 @@ module.exports = {
   databaseCredentialsValidationSchema,
   disconnectIdlePgConnectionValidationSchema,
   databaseQueryValidationSchema,
+  mfaSetupValidationSchema,
 };

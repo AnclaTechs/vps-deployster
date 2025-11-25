@@ -28,6 +28,9 @@ const {
   getPgDatabaseQuickSummary,
   getPgTableQuickSummary,
   getSysMonitorAnalytics,
+  getSettingsOverview,
+  generateMfaSecret,
+  completeMfaSetup,
 } = require("../controllers");
 const { authenticateUser, pgDBValidator } = require("../middlewares");
 var router = express.Router();
@@ -144,5 +147,16 @@ router.get(
 );
 
 router.get("/sys-monitor", authenticateUser, getSysMonitorAnalytics);
+
+router.get("/settings", authenticateUser, getSettingsOverview);
+
+router.post(
+  "/settings/generate-mfa-secret",
+  authenticateUser,
+  generateMfaSecret
+);
+
+router.post("/settings/complete-mfa-setup", authenticateUser, completeMfaSetup);
+
 
 module.exports = router;

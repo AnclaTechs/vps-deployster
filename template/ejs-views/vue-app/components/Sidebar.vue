@@ -58,9 +58,21 @@
           Redis
         </li>
 
-        <li @click="toggleSection('tools')" class="section">
+        <li
+          @click="navigate('settings')"
+          :class="{ active: isActive('settings') }"
+        >
+          <img
+            src="https://www.svgrepo.com/show/34009/settings.svg"
+            class="menu-icon"
+          />
+          Settings
+        </li>
+
+                <li @click="toggleSection('tools')" class="section">
           🐳 Docker (Coming Soon)
         </li>
+        
       </ul>
     </nav>
   </aside>

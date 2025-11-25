@@ -37,6 +37,11 @@ export default {
       this.sidebarIsCollapsed = !this.sidebarIsCollapsed;
     },
   },
+  beforeMount() {
+    if (this.$route.meta.requiresAuth) {
+      this.$checkAuthentication();
+    }
+  },
   mounted() {
     console.log("got here 223"); // ✅ Safe here
     console.log("object");

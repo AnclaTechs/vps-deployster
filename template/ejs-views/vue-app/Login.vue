@@ -16,14 +16,14 @@
         <h2 class="fw-bold text-center">🐚 Deployster Admin</h2>
         <section class="mt-3">
           <form id="signInForm">
-            <div class="mt-3">
+            <div v-if="!showTotpForm" class="mt-3">
               <label class="my-2 text-muted fw-bold">Username</label>
               <input
                 type="text"
                 v-model="username"
                 class="form-control"
                 placeholder="Enter your registered email or username"
-                required=""
+                required
               />
               <div class="mt-3 mb-3">
                 <label class="my-2 text-muted fw-bold">Password</label>
@@ -35,6 +35,18 @@
                   required
                 />
               </div>
+            </div>
+            <div v-else class="mt-3 mb-3">
+              <div v-if="totpFormAlert" class="alert alert-info" v-html="totpFormAlert"></div>
+              <input
+                type="text"
+                v-model="totp"
+                class="form-control"
+                placeholder="Enter Authenticator OTP"
+                required
+                autocomplete="off"
+              />
+
             </div>
 
             <a
@@ -63,7 +75,7 @@
           </form>
         </section>
 
-        <p>
+        <p v-if="!totpFormAlert">
           Don't have an Admin account?
           <router-link to="/register">Create Account</router-link>
         </p>
@@ -86,6 +98,9 @@ module.exports = {
       loading: false,
       username: "",
       password: "",
+      showTotpForm: false,
+      totpFormAlert: "",
+      totp: "",
       quotes: [
         {
           quote: "Computer science is the operating system for all Innovation.",
@@ -212,18 +227,20 @@ module.exports = {
       axios
         .post(
           `${this.$BACKEND_BASE_URL}/login`,
-          { username: this.username, password: this.password },
+          { username: this.username, password: this.password, totp: this.totp },
           this.$store.state.headers
         )
         .then((res) => {
           const userData = res.data.data;
-          this.$store.commit("updateUserData", userData);
-          if (!userData.user.isAdmin) {
-            this.$router.push("/dashboard");
-          } else {
-            this.$router.push("/admin");
-          }
+          if(userData.action?.required){
+            this.totpFormAlert = userData.action.message
+            this.showTotpForm = true
           this.loading = false;
+          }else{
+          this.$store.commit("updateUserData", userData);
+            this.$router.push("/dashboard");
+
+          }
         })
         .catch((err) => {
           console.log(err);

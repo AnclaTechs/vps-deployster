@@ -16,6 +16,22 @@
       "password": {
         "type": "TEXT"
       },
+      "totp_secret": {
+        "type": "TEXT",
+        "helpText": "Encrypted MFA secret key",
+        "nullable": true
+      },
+      "authenticator_label": {
+        "type": "VARCHAR(20)",
+        "maxLength": 20,
+        "helpText": "Client Authenticator app name",
+        "nullable": true
+      },
+      "last_activity": {
+        "type": "DATETIME",
+        "default": "CURRENT_TIMESTAMP",
+        "nullable": true
+      },
       "created_at": {
         "type": "DATETIME",
         "default": "CURRENT_TIMESTAMP"

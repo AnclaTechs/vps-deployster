@@ -4,6 +4,7 @@ const net = require("net");
 const moment = require("moment");
 const { v4: uuidv4 } = require("uuid");
 const bcrypt = require("bcrypt");
+const speakeasy = require("speakeasy");
 const JWTR = require("jwt-redis").default;
 const { parse: csvParse } = require("csv-parse/sync");
 const {
@@ -26,8 +27,9 @@ const {
   databaseCredentialsValidationSchema,
   disconnectIdlePgConnectionValidationSchema,
   databaseQueryValidationSchema,
+  mfaSetupValidationSchema,
 } = require("../utils/validator");
-const redisClient = require("../redis");
+const { redisClient, ioRedisClient } = require("../redis");
 const {
   isPortActive,
   convertFolderNameToDocumentTitle,
@@ -55,6 +57,7 @@ const {
   getTopProcesses,
   computeTopDiskFiles,
   getSystemMonitorLog,
+  verifyTwoFactorToken,
 } = require("../utils/functools");
 const {
   DEPLOYMENT_STATUS,
@@ -62,7 +65,11 @@ const {
   PG_PASSWORD_KEY,
   PG_USERNAME_KEY,
   PG_CLUSTER,
+  hasMfaConfig,
+  hasEmailConfig,
 } = require("../utils/constants");
+const signals = require("../signals");
+const { Users } = require("../database/models");
 const jwtr = new JWTR(redisClient);
 const DEPLOYSTER_VPS_PUBLIC_IP =
   process.env.DEPLOYSTER_VPS_PUBLIC_IP || "127.0.0.1";
@@ -107,7 +114,7 @@ async function createUser(req, res) {
         const timestamp = moment().format("YYYY-MM-DD HH:mm:ss");
         await pool.run(
           "INSERT INTO users (username, email, password, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
-          [username, email, hashedPassword, timestamp, timestamp]
+          [username, email, hashedPassword, `${timestamp}`, `${timestamp}`]
         );
 
         return res.status(200).json({
@@ -139,7 +146,7 @@ async function loginUser(req, res) {
       return;
     }
 
-    const { username, password } = req.body;
+    const { username, password, totp } = req.body;
     let user;
     try {
       if (username.includes("@")) {
@@ -170,23 +177,95 @@ async function loginUser(req, res) {
         .status(401)
         .json({ status: false, message: "Invalid email or password" });
     }
-    const token = await jwtr.sign(
-      { userId: user.id, email: user.email, username: user.username },
-      process.env.DEPLOYSTER_JSON_WEB_TOKEN_KEY
-    );
 
-    return res.json({
-      status: true,
-      message: "Login successful",
-      data: {
-        token: token,
-        user: {
-          username: user.username,
+    if (user.totp_secret) {
+      if (!totp) {
+        return res.json({
+          status: true,
+          message: "Action required",
+          data: {
+            token: null,
+            action: {
+              required: true,
+              message: `Input 2FA code from <strong>${user.authenticator_label}</strong>`,
+            },
+            user: {},
+          },
+        });
+      } else {
+        const decryptedMfaSecret = await Users.methods.decryptMfaSecret(
+          user.totp_secret
+        );
+        if (verifyTwoFactorToken(totp, decryptedMfaSecret)) {
+          const token = await jwtr.sign(
+            { userId: user.id, email: user.email, username: user.username },
+            process.env.DEPLOYSTER_JSON_WEB_TOKEN_KEY,
+            { expiresIn: "1d" }
+          );
+
+          signals.emit("updateUserLastActivityTime", {
+            userId: user.id,
+            timestamp: new Date().toISOString(),
+          });
+
+          return res.json({
+            status: true,
+            message: "Login successful",
+            data: {
+              token: token,
+              action: null,
+              user: {
+                username: user.username,
+                email: user.email,
+                avatar: "",
+              },
+            },
+          });
+        } else {
+          return res.json({
+            status: false,
+            message: "Invalid Authenticator code",
+            data: {
+              token: null,
+              action: {
+                required: true,
+                message: `Input 2FA code from ${user.authenticator_label}`,
+              },
+              user: {},
+            },
+          });
+        }
+      }
+    } else {
+      const token = await jwtr.sign(
+        {
+          userId: user.id,
           email: user.email,
-          avatar: "",
+          username: user.username,
         },
-      },
-    });
+        process.env.DEPLOYSTER_JSON_WEB_TOKEN_KEY,
+        { expiresIn: "1d" }
+      );
+
+      signals.emit("updateUserLastActivityTime", {
+        userId: user.id,
+        timestamp: new Date().toISOString(),
+      });
+
+      return res.json({
+        status: true,
+        message: "Login successful",
+        data: {
+          token: token,
+          action: null,
+          user: {
+            username: user.username,
+            email: user.email,
+            avatar: "",
+          },
+        },
+      });
+    }
   } catch (error) {
     console.log({ error });
     return res
@@ -1244,7 +1323,7 @@ async function rollbackToCommitSnapshot(req, res) {
     try {
       // GENERATE DEPLOYMENT LOCK KEY
       deploymentLockKey = `lock:deploy:${projectInView.id}`;
-      const acquired = await redisClient.set(
+      const acquired = await ioRedisClient.set(
         deploymentLockKey,
         "locked",
         "NX",
@@ -1263,11 +1342,11 @@ async function rollbackToCommitSnapshot(req, res) {
         .json({ status: false, message: "Error getting deployment lock key" });
     }
 
-    await redisClient.set(`job:${job_id}:status`, "queued");
-    await redisClient.del(`job:${job_id}:logs`);
+    await ioRedisClient.set(`job:${job_id}:status`, "queued");
+    await ioRedisClient.del(`job:${job_id}:logs`);
 
     try {
-      await redisClient.set(`job:${job_id}:status`, "running");
+      await ioRedisClient.set(`job:${job_id}:status`, "running");
 
       // CREATE DEPLOYMENT RECORD LOG
       deploymentRecord = await createRowAndReturn(
@@ -1284,12 +1363,12 @@ async function rollbackToCommitSnapshot(req, res) {
         ]
       );
       var newLogMessage = "\n[INFO] Deployment record created\n";
-      await redisClient.append(`job:${job_id}:logs`, newLogMessage);
+      await ioRedisClient.append(`job:${job_id}:logs`, newLogMessage);
       await addLogToDeploymentRecord(deploymentRecord.id, newLogMessage);
     } catch (error) {
       var errorOutput = `[ERROR] Error recording deployment log: ${error}`;
-      await redisClient.append(`job:${job_id}:logs`, errorOutput);
-      await redisClient.set(`job:${job_id}:status`, "failed");
+      await ioRedisClient.append(`job:${job_id}:logs`, errorOutput);
+      await ioRedisClient.set(`job:${job_id}:status`, "failed");
       await addLogToDeploymentRecord(deploymentRecord.id, errorOutput);
       await markDeploymentAsComplete(
         deploymentRecord.id,
@@ -1314,8 +1393,8 @@ async function rollbackToCommitSnapshot(req, res) {
 
         if (!pipelineStageInView) {
           var errorOutput = `[ERROR] Unable to reconcile stage UUID - ${stage_uuid}\n`;
-          await redisClient.append(`job:${job_id}:logs`, errorOutput);
-          await redisClient.set(`job:${job_id}:status`, "failed");
+          await ioRedisClient.append(`job:${job_id}:logs`, errorOutput);
+          await ioRedisClient.set(`job:${job_id}:status`, "failed");
           await addLogToDeploymentRecord(deploymentRecord.id, errorOutput);
           await markDeploymentAsComplete(
             deploymentRecord.id,
@@ -1330,12 +1409,12 @@ async function rollbackToCommitSnapshot(req, res) {
         }
 
         var newLogMessage = `\n[INFO] Stage UUID - ${stage_uuid} processing\n`;
-        await redisClient.append(`job:${job_id}:logs`, newLogMessage);
+        await ioRedisClient.append(`job:${job_id}:logs`, newLogMessage);
         await addLogToDeploymentRecord(deploymentRecord.id, newLogMessage);
       } else {
         var errorOutput = `[ERROR] Project has no active pipeline record\n`;
-        await redisClient.append(`job:${job_id}:logs`, errorOutput);
-        await redisClient.set(`job:${job_id}:status`, "failed");
+        await ioRedisClient.append(`job:${job_id}:logs`, errorOutput);
+        await ioRedisClient.set(`job:${job_id}:status`, "failed");
         await addLogToDeploymentRecord(deploymentRecord.id, errorOutput);
         await markDeploymentAsComplete(
           deploymentRecord.id,
@@ -1353,7 +1432,7 @@ async function rollbackToCommitSnapshot(req, res) {
     }
 
     var newLogMessage = `\n[INFO] Getting specific deployment record\n`;
-    await redisClient.append(`job:${job_id}:logs`, newLogMessage);
+    await ioRedisClient.append(`job:${job_id}:logs`, newLogMessage);
     await addLogToDeploymentRecord(deploymentRecord.id, newLogMessage);
 
     try {
@@ -1363,12 +1442,12 @@ async function rollbackToCommitSnapshot(req, res) {
       );
 
       var newLogMessage = `\n[INFO] Deployment record - ${specificDeploymentInView.id} obtained\n`;
-      await redisClient.append(`job:${job_id}:logs`, newLogMessage);
+      await ioRedisClient.append(`job:${job_id}:logs`, newLogMessage);
       await addLogToDeploymentRecord(deploymentRecord.id, newLogMessage);
     } catch (err) {
       var errorOutput = `[ERROR] Error getting deployment record: ${err}\n`;
-      await redisClient.append(`job:${job_id}:logs`, errorOutput);
-      await redisClient.set(`job:${job_id}:status`, "failed");
+      await ioRedisClient.append(`job:${job_id}:logs`, errorOutput);
+      await ioRedisClient.set(`job:${job_id}:status`, "failed");
       await addLogToDeploymentRecord(deploymentRecord.id, errorOutput);
       await markDeploymentAsComplete(
         deploymentRecord.id,
@@ -1385,8 +1464,8 @@ async function rollbackToCommitSnapshot(req, res) {
       backupFileLocation = specificDeploymentInView.artifact_path;
     } else {
       var errorOutput = `[ERROR] Error getting project/pipeline artifact path\n`;
-      await redisClient.append(`job:${job_id}:logs`, errorOutput);
-      await redisClient.set(`job:${job_id}:status`, "failed");
+      await ioRedisClient.append(`job:${job_id}:logs`, errorOutput);
+      await ioRedisClient.set(`job:${job_id}:status`, "failed");
       await addLogToDeploymentRecord(deploymentRecord.id, errorOutput);
       await markDeploymentAsComplete(
         deploymentRecord.id,
@@ -1406,12 +1485,12 @@ async function rollbackToCommitSnapshot(req, res) {
         `cd ${projectInView.app_local_path} && git reset --hard ${commit_hash}`
       );
 
-      await redisClient.append(`job:${job_id}:logs`, newLogMessage);
+      await ioRedisClient.append(`job:${job_id}:logs`, newLogMessage);
       await addLogToDeploymentRecord(deploymentRecord.id, newLogMessage);
     } catch (err) {
       var errorOutput = `[ERROR] ${err}\n`;
-      await redisClient.append(`job:${job_id}:logs`, errorOutput);
-      await redisClient.set(`job:${job_id}:status`, "failed");
+      await ioRedisClient.append(`job:${job_id}:logs`, errorOutput);
+      await ioRedisClient.set(`job:${job_id}:status`, "failed");
       await addLogToDeploymentRecord(deploymentRecord.id, errorOutput);
       await markDeploymentAsComplete(
         deploymentRecord.id,
@@ -1435,12 +1514,12 @@ async function rollbackToCommitSnapshot(req, res) {
       var newLogMessage = await runShell(
         `tar -xzf "${backupFileLocation}" -C "${projectInView.app_local_path}"`
       );
-      await redisClient.append(`job:${job_id}:logs`, newLogMessage);
+      await ioRedisClient.append(`job:${job_id}:logs`, newLogMessage);
       await addLogToDeploymentRecord(deploymentRecord.id, newLogMessage);
     } catch (err) {
       var errorOutput = `[ERROR] ${err}\n`;
-      await redisClient.append(`job:${job_id}:logs`, errorOutput);
-      await redisClient.set(`job:${job_id}:status`, "failed");
+      await ioRedisClient.append(`job:${job_id}:logs`, errorOutput);
+      await ioRedisClient.set(`job:${job_id}:status`, "failed");
       await addLogToDeploymentRecord(deploymentRecord.id, errorOutput);
       await markDeploymentAsComplete(
         deploymentRecord.id,
@@ -1459,7 +1538,7 @@ async function rollbackToCommitSnapshot(req, res) {
       );
 
       var newLogMessage = `\n[INFO] Server stopped && rebooting\n`;
-      await redisClient.append(`job:${job_id}:logs`, newLogMessage);
+      await ioRedisClient.append(`job:${job_id}:logs`, newLogMessage);
       await addLogToDeploymentRecord(deploymentRecord.id, newLogMessage);
 
       // REDEPLOY
@@ -1470,12 +1549,12 @@ async function rollbackToCommitSnapshot(req, res) {
       );
 
       var newLogMessage = `\n[INFO] Server restarted successfully\n`;
-      await redisClient.append(`job:${job_id}:logs`, newLogMessage);
+      await ioRedisClient.append(`job:${job_id}:logs`, newLogMessage);
       await addLogToDeploymentRecord(deploymentRecord.id, newLogMessage);
     } catch (err) {
       var errorOutput = `[ERROR] ${err}\n`;
-      await redisClient.append(`job:${job_id}:logs`, errorOutput);
-      await redisClient.set(`job:${job_id}:status`, "failed");
+      await ioRedisClient.append(`job:${job_id}:logs`, errorOutput);
+      await ioRedisClient.set(`job:${job_id}:status`, "failed");
       await addLogToDeploymentRecord(deploymentRecord.id, errorOutput);
       await markDeploymentAsComplete(
         deploymentRecord.id,
@@ -1502,10 +1581,10 @@ async function rollbackToCommitSnapshot(req, res) {
       ]);
     }
 
-    await redisClient.set(`job:${job_id}:status`, "complete");
+    await ioRedisClient.set(`job:${job_id}:status`, "complete");
 
     // Clear the logs from Redis upon completion
-    await redisClient.del(`job:${job_id}:logs`);
+    await ioRedisClient.del(`job:${job_id}:logs`);
 
     await markDeploymentAsComplete(
       deploymentRecord.id,
@@ -1833,9 +1912,9 @@ async function setPostgresDatabasePass(req, res) {
       );
 
       if (output && output.includes("PostgreSQL")) {
-        await redisClient.set(PG_PASSWORD_KEY, password, "EX", PASSWORD_TTL);
-        await redisClient.set(PG_USERNAME_KEY, username, "EX", PASSWORD_TTL);
-        await redisClient.set(PG_CLUSTER, port, "EX", PASSWORD_TTL);
+        await ioRedisClient.set(PG_PASSWORD_KEY, password, "EX", PASSWORD_TTL);
+        await ioRedisClient.set(PG_USERNAME_KEY, username, "EX", PASSWORD_TTL);
+        await ioRedisClient.set(PG_CLUSTER, port, "EX", PASSWORD_TTL);
         const pgCredentials = await getPostgresCredentials(port);
         return res.status(200).json({
           success: true,
@@ -2531,15 +2610,15 @@ async function getSysMonitorAnalytics(req, res) {
 
     // TOP FILES
     let topFiles = null;
-    // await redisClient.del(TOP_FILES_REDIS_KEY);
-    const cached = await redisClient.get(TOP_FILES_REDIS_KEY);
+    // await ioRedisClient.del(TOP_FILES_REDIS_KEY);
+    const cached = await ioRedisClient.get(TOP_FILES_REDIS_KEY);
     if (cached) {
       topFiles = JSON.parse(cached);
     } else {
       // Trigger background computation, don't wait return empty for now
       computeTopDiskFiles(20)
         .then(async (rows) => {
-          await redisClient.set(
+          await ioRedisClient.set(
             TOP_FILES_REDIS_KEY,
             JSON.stringify(rows),
             "EX",
@@ -2568,6 +2647,103 @@ async function getSysMonitorAnalytics(req, res) {
     return res.json({ success: true, data: payload });
   } catch (error) {
     console.error("Analytics error:", error);
+    return res
+      .status(500)
+      .json({ status: false, message: "Internal server error", data: {} });
+  }
+}
+
+async function getSettingsOverview(req, res) {
+  try {
+    const user = req.user;
+    let mfaIsActive = false;
+    if (user.totp_secret) mfaIsActive = true;
+
+    const data = {
+      hasMfaConfig,
+      mfaIsActive,
+      hasEmailConfig,
+    };
+
+    return res.status(200).json({
+      success: true,
+      message: "Data returned successfully",
+      data,
+    });
+  } catch (error) {
+    return res
+      .status(500)
+      .json({ status: false, message: "Internal server error", data: {} });
+  }
+}
+
+async function generateMfaSecret(req, res) {
+  try {
+    const user = req.user;
+
+    const secret = speakeasy.generateSecret({
+      length: 20,
+      name: `Deployster (${process.env.DEPLOYSTER_VPS_PUBLIC_IP})`,
+      issuer: "Deployster",
+    });
+
+    const otpAuthUrl = speakeasy.otpauthURL({
+      secret: secret.base32,
+      label: user.email,
+      issuer: `Deployster (${process.env.DEPLOYSTER_VPS_PUBLIC_IP})`,
+      encoding: "base32",
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Data returned successfully",
+      data: {
+        secret: secret.base32,
+        otpAuthUrl,
+      },
+    });
+  } catch (error) {
+    return res
+      .status(500)
+      .json({ status: false, message: "Internal server error", data: {} });
+  }
+}
+
+async function completeMfaSetup(req, res) {
+  try {
+    const { error } = mfaSetupValidationSchema.validate(req.body);
+    if (error) {
+      res.status(400);
+      return res.json({
+        status: false,
+        message: error.details[0].message,
+      });
+    }
+
+    const user = req.user;
+    const { secret_base32, label, totp } = req.body;
+
+    if (verifyTwoFactorToken(totp, secret_base32)) {
+      const encryptedSecret = await Users.methods.encryptMfaSecret(
+        secret_base32
+      );
+      await pool.run(
+        "UPDATE users SET totp_secret = ?, authenticator_label = ? WHERE id = ?",
+        [encryptedSecret, label, user.id]
+      );
+      return res.status(200).json({
+        success: true,
+        message: "MFA setup successfully",
+        data: {},
+      });
+    } else {
+      return res.status(403).json({
+        success: false,
+        message: "Invalid Authorization token",
+        data: {},
+      });
+    }
+  } catch (error) {
     return res
       .status(500)
       .json({ status: false, message: "Internal server error", data: {} });
@@ -2603,4 +2779,7 @@ module.exports = {
   getPgDatabaseQuickSummary,
   getPgTableQuickSummary,
   getSysMonitorAnalytics,
+  getSettingsOverview,
+  generateMfaSecret,
+  completeMfaSetup,
 };

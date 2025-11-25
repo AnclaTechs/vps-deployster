@@ -1,10 +1,11 @@
 const JWTR = require("jwt-redis").default;
 const { getSingleRow } = require("@anclatechs/sql-buns");
-const redisClient = require("../redis");
+const { redisClient } = require("../redis");
 const {
   getPostgresCredentials,
   listPostgresClusters,
 } = require("../utils/functools");
+const signals = require("../signals");
 const jwtr = new JWTR(redisClient);
 
 async function verifyToken(token) {
@@ -43,6 +44,30 @@ async function authenticateUser(req, res, next) {
   try {
     const decoded = await verifyToken(token);
     const user = await findUserByDecodedToken(decoded);
+    const now = Date.now();
+
+    if (user.last_activity) {
+      const last = new Date(user.last_activity).getTime();
+      const inactiveTime = now - last;
+
+      if (inactiveTime > 15 * 60 * 1000) {
+        // 15 minutes of inactivity
+        const verified = await jwtr.decode(
+          token,
+          process.env.JSON_WEB_TOKE_KEY
+        );
+        await jwtr.destroy(verified.jti);
+        return res
+          .status(401)
+          .json({ message: "Session expired due to inactivity" });
+      }
+    }
+
+    // pass to signals
+    signals.emit("updateUserLastActivityTime", {
+      userId: user.id,
+      timestamp: new Date(now).toISOString(),
+    });
 
     req.user = user;
     next();

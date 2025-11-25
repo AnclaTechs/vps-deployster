@@ -48,6 +48,7 @@ const components = {
     ),
   MonitorDashboard: () =>
     loadModule("/vue/pages/MonitorDashboard.vue", httpLoaderOption),
+  SettingsPage: () => loadModule("/vue/pages/Settings.vue", httpLoaderOption),
 };
 
 const routes = [
@@ -95,6 +96,12 @@ const routes = [
     path: "/sys-monitor",
     name: "MonitorDashboard",
     component: components.MonitorDashboard,
+    meta: { requiresAuth: true },
+  },
+  {
+    path: "/settings",
+    name: "SettingsPage",
+    component: components.SettingsPage,
     meta: { requiresAuth: true },
   },
 ];

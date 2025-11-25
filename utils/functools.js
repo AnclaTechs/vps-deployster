@@ -4,6 +4,7 @@ const net = require("net");
 const moment = require("moment");
 const redis = require("redis");
 const path = require("path");
+const speakeasy = require("speakeasy");
 const dotenv = require("dotenv");
 const { parse: csvParse } = require("csv-parse/sync");
 const { pool, getSingleRow } = require("@anclatechs/sql-buns");
@@ -15,7 +16,7 @@ const {
   PG_CLUSTER,
   PASSWORD_TTL,
 } = require("./constants");
-const redisClient = require("../redis");
+const { ioRedisClient } = require("../redis");
 
 const isIPAddress = (str) => /\d+\.\d+\.\d+\.\d+/.test(str);
 
@@ -231,7 +232,7 @@ async function markDeploymentAsComplete(
     console.log("Error marking deployment as complete", error);
   } finally {
     if (deploymentLockKey) {
-      await redisClient.del(deploymentLockKey);
+      await ioRedisClient.del(deploymentLockKey);
     }
   }
 }
@@ -801,9 +802,9 @@ async function listPostgresClusters() {
 async function getPostgresCredentials(port = undefined) {
   try {
     const [username, password, cluster] = await Promise.all([
-      redisClient.get(PG_USERNAME_KEY),
-      redisClient.get(PG_PASSWORD_KEY),
-      redisClient.get(PG_CLUSTER),
+      ioRedisClient.get(PG_USERNAME_KEY),
+      ioRedisClient.get(PG_PASSWORD_KEY),
+      ioRedisClient.get(PG_CLUSTER),
     ]);
 
     if (port && cluster != port) {
@@ -812,9 +813,9 @@ async function getPostgresCredentials(port = undefined) {
 
     if (username && password) {
       await Promise.all([
-        redisClient.expire(PG_USERNAME_KEY, PASSWORD_TTL),
-        redisClient.expire(PG_PASSWORD_KEY, PASSWORD_TTL),
-        redisClient.expire(PG_CLUSTER, PASSWORD_TTL),
+        ioRedisClient.expire(PG_USERNAME_KEY, PASSWORD_TTL),
+        ioRedisClient.expire(PG_PASSWORD_KEY, PASSWORD_TTL),
+        ioRedisClient.expire(PG_CLUSTER, PASSWORD_TTL),
       ]);
       return { username, password, cluster };
     }
@@ -1027,6 +1028,21 @@ async function getSystemMonitorLog(csvPath, range = "15m") {
   return csvParse(output, { columns: false });
 }
 
+function verifyTwoFactorToken(userProvidedToken, storedSecret) {
+  const verified = speakeasy.totp.verify({
+    secret: storedSecret,
+    encoding: "base32",
+    token: userProvidedToken,
+    window: 1, // This help us allow for a little time skew (1 time step difference max)
+  });
+
+  if (verified) {
+    return true;
+  } else {
+    return false;
+  }
+}
+
 module.exports = {
   isIPAddress,
   getProjectPort,
@@ -1060,4 +1076,5 @@ module.exports = {
   getTopProcesses,
   computeTopDiskFiles,
   getSystemMonitorLog,
+  verifyTwoFactorToken,
 };

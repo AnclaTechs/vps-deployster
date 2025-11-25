@@ -1,4 +1,13 @@
 import { defineModel, Fields } from "@anclatechs/sql-buns-migrate";
+import { hasMfaConfig } from "../../utils/constants.js";
+import crypto from "node:crypto";
+const MFA_ENCRYPTION_ALGORITHM = "aes-256-cbc";
+const MFA_ENCRYPTION_KEY = crypto.scryptSync(
+  process.env.DEPLOYSTER_MFA_SECRET_KEY || "DEPLOYSTER_MFA_SECRET_KEY",
+  "salt",
+  32
+);
+const MFA_IV_LENGTH = 16;
 
 export const Users = defineModel(
   "users",
@@ -7,6 +16,21 @@ export const Users = defineModel(
     username: { type: Fields.TextField },
     email: { type: Fields.TextField },
     password: { type: Fields.TextField },
+    totp_secret: {
+      type: Fields.TextField,
+      helpText: "Encrypted MFA secret key",
+      nullable: true,
+    },
+    authenticator_label: {
+      type: Fields.CharField,
+      maxLength: 20,
+      helpText: "Client Authenticator app name",
+      nullable: true,
+    },
+    last_activity: {
+      type: Fields.DateTimeField,
+      nullable: true,
+    },
     created_at: { type: Fields.DateTimeField, default: "CURRENT_TIMESTAMP" },
     updated_at: { type: Fields.DateTimeField, nullable: true },
   },
@@ -20,6 +44,42 @@ export const Users = defineModel(
       },
     },
     meta: { tableName: "users" },
+    methods: {
+      encryptMfaSecret(text) {
+        this.assertParams({ text, required: true, type: "string" });
+
+        if (!hasMfaConfig) {
+          throw new Error(
+            "MFA config should be included in deployster .env setup"
+          );
+        }
+        const iv = crypto.randomBytes(MFA_IV_LENGTH);
+        const cipher = crypto.createCipheriv(
+          MFA_ENCRYPTION_ALGORITHM,
+          MFA_ENCRYPTION_KEY,
+          iv
+        );
+        let encrypted = cipher.update(text);
+        encrypted = Buffer.concat([encrypted, cipher.final()]);
+        return iv.toString("hex") + ":" + encrypted.toString("hex");
+      },
+
+      decryptMfaSecret(text) {
+        this.assertParams({ text, required: true, type: "string" });
+
+        const parts = text.split(":");
+        const iv = Buffer.from(parts.shift(), "hex");
+        const encryptedText = Buffer.from(parts.join(":"), "hex");
+        const decipher = crypto.createDecipheriv(
+          MFA_ENCRYPTION_ALGORITHM,
+          MFA_ENCRYPTION_KEY,
+          iv
+        );
+        let decrypted = decipher.update(encryptedText);
+        decrypted = Buffer.concat([decrypted, decipher.final()]);
+        return decrypted.toString();
+      },
+    },
   }
 );
 
