@@ -72,8 +72,8 @@ const signals = require("../signals");
 const { Users } = require("../database/models");
 const jwtr = new JWTR(redisClient);
 const isProduction = process.env.NODE_ENV === "production";
-const DEPLOYSTER_VPS_PUBLIC_IP =
-  process.env.DEPLOYSTER_VPS_PUBLIC_IP || "127.0.0.1";
+const DEPLOYSTER_VPS_HOST_ADDRESS =
+  process.env.DEPLOYSTER_VPS_HOST_ADDRESS || "127.0.0.1";
 
 const TOP_FILES_REDIS_KEY = "sysTopFiles:v1";
 const TOP_FILES_TTL = 60 * 60 * 6; // 6 hours
@@ -1653,6 +1653,7 @@ async function rollbackToCommitSnapshot(req, res) {
 }
 
 async function redisOverviewData(req, res) {
+  const REDIS_HOST = "127.0.0.1"; // Redis setup in Deployester is assumed to be bound only to localhost (127.0.0.1)
   try {
     // CHECK REDIS IS INSTALLED
     const DEFAULT_PORT = 6379;
@@ -1710,7 +1711,7 @@ async function redisOverviewData(req, res) {
         metadata:
           "Redis uses port 6379 as its default TCP port for client connections. This is the standard port the Redis server listens on unless explicitly configured otherwise",
         created_at: null,
-        uri: `redis://${DEPLOYSTER_VPS_PUBLIC_IP}:${DEFAULT_PORT}`,
+        uri: `redis://${REDIS_HOST}:${DEFAULT_PORT}`,
         logPath: "/var/log/redis/redis-server.log",
       },
     ];
@@ -1730,7 +1731,7 @@ async function redisOverviewData(req, res) {
         servers.push({
           ...data,
           portIsActive: await redisPortIsOnline(data.port),
-          uri: `redis://${DEPLOYSTER_VPS_PUBLIC_IP}:${data.port}`,
+          uri: `redis://${REDIS_HOST}:${data.port}`,
           logPath: path.join(
             __dirname,
             `../logs/deployster-redis${data.port}.log`
@@ -2729,14 +2730,14 @@ async function generateMfaSecret(req, res) {
 
     const secret = speakeasy.generateSecret({
       length: 20,
-      name: `Deployster (${process.env.DEPLOYSTER_VPS_PUBLIC_IP})`,
+      name: `Deployster (${process.env.DEPLOYSTER_VPS_HOST_ADDRESS})`,
       issuer: "Deployster",
     });
 
     const otpAuthUrl = speakeasy.otpauthURL({
       secret: secret.base32,
       label: user.email,
-      issuer: `Deployster (${process.env.DEPLOYSTER_VPS_PUBLIC_IP})`,
+      issuer: `Deployster (${process.env.DEPLOYSTER_VPS_HOST_ADDRESS})`,
       encoding: "base32",
     });
 

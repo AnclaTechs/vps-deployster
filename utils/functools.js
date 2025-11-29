@@ -1045,14 +1045,17 @@ function verifyTwoFactorToken(userProvidedToken, storedSecret) {
 
 
 // Function to replace placeholders in the email template
-const replaceEmailTemplatePlaceholders = (template, data) => {
-  console.log("[Template] Starting template replacement with data:", JSON.stringify(data, null, 2));
+function replaceEmailTemplatePlaceholders(template, data) {
+  console.log(
+    "[Template] Starting template replacement with data:",
+    JSON.stringify(data, null, 2)
+  );
   let result = template;
 
   for (const [key, value] of Object.entries(data)) {
-    if (typeof value !== 'object' || value === null) {
+    if (typeof value !== "object" || value === null) {
       const placeholder = `{{${key}}}`;
-      result = result.replace(new RegExp(placeholder, 'g'), value);
+      result = result.replace(new RegExp(placeholder, "g"), value);
       console.log(`[Template] Replaced ${placeholder} with ${value}`);
     }
   }

@@ -6,12 +6,12 @@ const { isIPAddress } = require("../utils/functools");
 const DEPLOYSTER_ADMIN_PATH = process.env.DEPLOYSTER_ADMIN_PATH || "app";
 const DEPLOYSTER_PORT = process.env.DEPLOYSTER_PORT || 3259;
 const DEPLOYSTER_PROTOCOL = process.env.DEPLOYSTER_PROTOCOL || "http";
-const DEPLOYSTER_VPS_PUBLIC_IP =
-  process.env.DEPLOYSTER_VPS_PUBLIC_IP || "127.0.0.1";
+const DEPLOYSTER_VPS_HOST_ADDRESS =
+  process.env.DEPLOYSTER_VPS_HOST_ADDRESS || "127.0.0.1";
 
 router.get(`/${DEPLOYSTER_ADMIN_PATH}`, (req, res) => {
-  const VUE_BASE_API_URL = `${DEPLOYSTER_PROTOCOL}://${DEPLOYSTER_VPS_PUBLIC_IP}${
-    isIPAddress(DEPLOYSTER_VPS_PUBLIC_IP) && DEPLOYSTER_PORT
+  const VUE_BASE_API_URL = `${DEPLOYSTER_PROTOCOL}://${DEPLOYSTER_VPS_HOST_ADDRESS}${
+    isIPAddress(DEPLOYSTER_VPS_HOST_ADDRESS) && DEPLOYSTER_PORT
       ? ":" + DEPLOYSTER_PORT
       : ""
   }/api`;
@@ -29,8 +29,8 @@ router.get("/vue/{*any}", (req, res) => {
   );
 
   const referer = req.headers.referer || req.headers.origin;
-  const baseURL = `${DEPLOYSTER_PROTOCOL}://${DEPLOYSTER_VPS_PUBLIC_IP}${
-    isIPAddress(DEPLOYSTER_VPS_PUBLIC_IP) && DEPLOYSTER_PORT
+  const baseURL = `${DEPLOYSTER_PROTOCOL}://${DEPLOYSTER_VPS_HOST_ADDRESS}${
+    isIPAddress(DEPLOYSTER_VPS_HOST_ADDRESS) && DEPLOYSTER_PORT
       ? ":" + DEPLOYSTER_PORT
       : ""
   }`;

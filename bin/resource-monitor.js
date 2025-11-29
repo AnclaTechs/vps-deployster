@@ -5,6 +5,7 @@ const {
   getSystemMonitorLog,
   replaceEmailTemplatePlaceholders,
   getTopProcesses,
+  isIPAddress,
 } = require("../utils/functools");
 const { ioRedisClient } = require("../redis");
 const transporter = require("../mailer/nodemailer");
@@ -280,11 +281,19 @@ async function detectResourceSpikeAndUsageAnomaly() {
         );
 
         const data = {
-          deploysterPublicIp: process.env.DEPLOYSTER_VPS_PUBLIC_IP,
+          deploysterPublicIp: process.env.DEPLOYSTER_VPS_HOST_ADDRESS,
           cpuLoad: Number(smoothedCpu).toFixed(2),
           ramUsage: Number(smoothedRam).toFixed(2),
           topProcesses: topProcessesTemplate,
-          url: `${process.env.DEPLOYSTER_PROTOCOL}://${process.env.DEPLOYSTER_VPS_PUBLIC_IP}/${process.env.DEPLOYSTER_ADMIN_PATH}`,
+          url: isIPAddress(process.env.DEPLOYSTER_VPS_HOST_ADDRESS)
+            ? `${process.env.DEPLOYSTER_PROTOCOL}://${
+                process.env.DEPLOYSTER_VPS_HOST_ADDRESS
+              }:${process.env.DEPLOYSTER_PORT}/${
+                process.env.DEPLOYSTER_ADMIN_PATH || "app"
+              }`
+            : `${process.env.DEPLOYSTER_PROTOCOL}://${
+                process.env.DEPLOYSTER_VPS_HOST_ADDRESS
+              }/${process.env.DEPLOYSTER_ADMIN_PATH || "app"}`,
           cpuExpected: spike.long
             ? Number(thresholds.longCpu).toFixed(2)
             : spike.medium
