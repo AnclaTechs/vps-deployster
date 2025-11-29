@@ -1043,6 +1043,23 @@ function verifyTwoFactorToken(userProvidedToken, storedSecret) {
   }
 }
 
+
+// Function to replace placeholders in the email template
+const replaceEmailTemplatePlaceholders = (template, data) => {
+  console.log("[Template] Starting template replacement with data:", JSON.stringify(data, null, 2));
+  let result = template;
+
+  for (const [key, value] of Object.entries(data)) {
+    if (typeof value !== 'object' || value === null) {
+      const placeholder = `{{${key}}}`;
+      result = result.replace(new RegExp(placeholder, 'g'), value);
+      console.log(`[Template] Replaced ${placeholder} with ${value}`);
+    }
+  }
+
+  return result;
+};
+
 module.exports = {
   isIPAddress,
   getProjectPort,
@@ -1077,4 +1094,5 @@ module.exports = {
   computeTopDiskFiles,
   getSystemMonitorLog,
   verifyTwoFactorToken,
+  replaceEmailTemplatePlaceholders,
 };

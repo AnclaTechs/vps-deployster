@@ -1,0 +1,39 @@
+Deployster Alert
+
+High Resource Alert
+{{deploysterPublicIp}}
+
+Hello Admin,
+Deployster detected usage exceeding your configured thresholds.
+
+CPU Load
+{{cpuLoad}}%
+
+Memory
+{{ramUsage}}%
+
+Top Consumers:
+{{topProcesses}}
+
+Notes:
+This spike is above known deviation across a regular: {{timeRange}} timespan.
+Server usage has exceeded normal patterns:
+• CPU: {{cpuExpected}}
+• RAM: {{ramExpected}}
+
+This alert helps you take early action before potential application issues.
+
+Recommended Actions:
+• Investigate the top processes listed above.
+• Check for runaway or stuck processes.
+• Consider scaling resources if this pattern persists.
+• If this spike has already been reviewed and confirmed as normal growth, no immediate action is required.
+
+View Live Metrics
+Check Logs
+
+Stay proactive,
+Deployster Monitoring System
+
+Timestamp: {{timestamp}}
+© Deployster.io
