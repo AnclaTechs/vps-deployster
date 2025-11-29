@@ -215,13 +215,13 @@
               <pre
                 class="bg-dark text-white p-4 rounded mb-4 overflow-auto"
               ><code>
-SMTP_HOST=your.smtp.com
-SMTP_PORT=587
-SMTP_USER=your-email@gmail.com
-SMTP_PASS=your-app-password
+DEPLOYSTER_SMTP_HOST=your.smtp.com
+DEPLOYSTER_SMTP_PORT=587
+DEPLOYSTER_SMTP_USER=your-email@gmail.com
+DEPLOYSTER_SMTP_PASS=your-app-password
 # Optional
-SMTP_FROM_NAME=Deployster
-SMTP_FROM_EMAIL=no-reply@yourdomain.com
+DEPLOYSTER_SMTP_FROM_NAME=Deployster
+DEPLOYSTER_SMTP_FROM_EMAIL=no-reply@yourdomain.com
               </code></pre>
 
               <div class="alert alert-info">
@@ -281,6 +281,7 @@ export default {
           this.twofa.loading = false;
 
           //
+          this.smtp.active = data.hasEmailConfig;
           this.smtp.hasConfig = data.hasEmailConfig;
           this.smtp.loading = false;
         })
