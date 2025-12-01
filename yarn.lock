@@ -2,20 +2,20 @@
 # yarn lockfile v1
 
 
-"@anclatechs/sql-buns-migrate@^1.0.13":
-  version "1.0.13"
-  resolved "https://registry.yarnpkg.com/@anclatechs/sql-buns-migrate/-/sql-buns-migrate-1.0.13.tgz#53518e08812ca091dfc8ac8c69c1b0f40fdd286a"
-  integrity sha512-hTXd8JbAhEQrSGFAOjyjKBZlJ1q90j0JJiG3yZaOg9ATOwCVeRrePWdIGt2V5NEgp7DI5ZO7HoiSFE0akOLSvg==
+"@anclatechs/sql-buns-migrate@^1.0.14":
+  version "1.0.14"
+  resolved "https://registry.yarnpkg.com/@anclatechs/sql-buns-migrate/-/sql-buns-migrate-1.0.14.tgz#9908162c9c021fa13a83be946f02fb1493c108e9"
+  integrity sha512-xXz3BSc5RAvm2SbzQdHR+kEp3wpL14o0WDg/yYQxs/2M6w+Oyd8eTZ6JJZ4ciEz4BWRkp1gVGlpRM1EZ8nyI3A==
   dependencies:
-    "@anclatechs/sql-buns" "^1.0.9"
+    "@anclatechs/sql-buns" "^1.0.10"
     chalk "^5.6.2"
     commander "^14.0.1"
     dotenv "^17.2.3"
 
-"@anclatechs/sql-buns@^1.0.9":
-  version "1.0.9"
-  resolved "https://registry.yarnpkg.com/@anclatechs/sql-buns/-/sql-buns-1.0.9.tgz#191c211cb19381b4dd4bafd196229c58a1edc781"
-  integrity sha512-VZ4+7r+EtKJvPG4VUt0eNsxeRp/zJJ8Jb1a3C4menot0qFpKKtiZAdBorOYEP7Nuis1xGtBOAh2NH2it8PtPvA==
+"@anclatechs/sql-buns@^1.0.10":
+  version "1.0.10"
+  resolved "https://registry.yarnpkg.com/@anclatechs/sql-buns/-/sql-buns-1.0.10.tgz#66b270d29f6193a9e8e1d59b42d954480da35641"
+  integrity sha512-Ev4OxXatr5kjuzC94jbUtZNW4Pan3NzjtRhdURW5RT4dVXcV3ykr5WY5RiQVOAEyuF4nILVlCWCrK521Gbb/eQ==
   dependencies:
     mysql2 "^3.9.7"
     pg "^8.11.5"
