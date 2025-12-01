@@ -8,10 +8,6 @@ CREATE TABLE IF NOT EXISTS "users" (
   created_at DATETIME NOT NULL DEFAULT 'CURRENT_TIMESTAMP',
   updated_at DATETIME DEFAULT 'CURRENT_TIMESTAMP'
 );
-ALTER TABLE projects ADD CONSTRAINT fk_projects_user_id FOREIGN KEY (user_id) REFERENCES users(id);
-CREATE INDEX IF NOT EXISTS idx_projects_user_id ON projects (user_id);
-ALTER TABLE deployments ADD CONSTRAINT fk_deployments_user_id FOREIGN KEY (user_id) REFERENCES users(id);
-CREATE INDEX IF NOT EXISTS idx_deployments_user_id ON deployments (user_id);
 CREATE TABLE IF NOT EXISTS "projects" (
   id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
   user_id INTEGER NOT NULL,
@@ -25,8 +21,6 @@ CREATE TABLE IF NOT EXISTS "projects" (
   log_file_iii_location TEXT,
   pipeline_json TEXT
 );
-ALTER TABLE deployments ADD CONSTRAINT fk_deployments_project_id FOREIGN KEY (project_id) REFERENCES projects(id);
-CREATE INDEX IF NOT EXISTS idx_deployments_project_id ON deployments (project_id);
 CREATE TABLE IF NOT EXISTS "deployments" (
   id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
   user_id INTEGER NOT NULL,
@@ -77,3 +71,10 @@ CREATE TABLE IF NOT EXISTS "_sqlbuns_migrations" (
   rolled_back INTEGER DEFAULT '0',
   rolled_back_at DATETIME DEFAULT 'CURRENT_TIMESTAMP'
 );
+
+ALTER TABLE projects ADD CONSTRAINT fk_projects_user_id FOREIGN KEY (user_id) REFERENCES users(id);
+CREATE INDEX IF NOT EXISTS idx_projects_user_id ON projects (user_id);
+ALTER TABLE deployments ADD CONSTRAINT fk_deployments_user_id FOREIGN KEY (user_id) REFERENCES users(id);
+CREATE INDEX IF NOT EXISTS idx_deployments_user_id ON deployments (user_id);
+ALTER TABLE deployments ADD CONSTRAINT fk_deployments_project_id FOREIGN KEY (project_id) REFERENCES projects(id);
+CREATE INDEX IF NOT EXISTS idx_deployments_project_id ON deployments (project_id);
