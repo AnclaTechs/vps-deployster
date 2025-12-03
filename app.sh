@@ -1,6 +1,10 @@
 #!/bin/bash
 
+set -e
+
 COMMAND=${1:-dev}
+
+yarn migrate
 
 echo "Starting server..."
 yarn $COMMAND &
