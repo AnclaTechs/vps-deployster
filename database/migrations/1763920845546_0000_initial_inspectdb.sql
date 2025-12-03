@@ -3,7 +3,6 @@
 -- Modified to ensure backward compatibility with previous installation running with prisma.
 
 PRAGMA foreign_keys = OFF;
-BEGIN TRANSACTION;
 
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
@@ -177,5 +176,4 @@ CREATE INDEX IF NOT EXISTS idx_projects_user_id ON projects (user_id);
 CREATE INDEX IF NOT EXISTS idx_deployments_user_id ON deployments (user_id);
 CREATE INDEX IF NOT EXISTS idx_deployments_project_id ON deployments (project_id);
 
-COMMIT;
 PRAGMA foreign_keys = ON;
