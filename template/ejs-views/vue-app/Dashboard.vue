@@ -243,6 +243,8 @@
                   placeholder="e.g. olaronke-alice"
                   class="form-control"
                   required
+                  autocomplete="new-username"
+                  spellcheck="false"
                 />
               </div>
 
@@ -259,6 +261,8 @@
                   placeholder="Password"
                   class="form-control"
                   required
+                  autocomplete="new-password"
+                  spellcheck="false"
                 />
               </div>
 
