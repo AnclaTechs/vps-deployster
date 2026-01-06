@@ -468,9 +468,7 @@ module.exports = {
         this.socket = new WebSocket(
           `${
             new URL(this.$BACKEND_BASE_URL).protocol == "https:" ? "wss" : "ws"
-          }://${new URL(this.$BACKEND_BASE_URL).host}/ws/terminal?token=${
-            this.$store.state.headers.headers.Authorization
-          }&username=${String(this.bashUsername).toLocaleLowerCase()}`
+          }://${new URL(this.$BACKEND_BASE_URL).host}/ws/terminal?username=${String(this.bashUsername).toLocaleLowerCase()}`
         );
 
         this.socket.onmessage = (event) => {

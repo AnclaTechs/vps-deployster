@@ -13,7 +13,7 @@ function setupTerminalWSS(server) {
       sslConnection = req.socket.encrypted;
       protocol = sslConnection ? "https" : "http";
       url = new URL(req.url, `${protocol}://${req.headers.host}`);
-      const token = url.searchParams.get("token");
+      const token = req.cookies.token;
 
       const decoded = await verifyToken(token);
       const user = await findUserByDecodedToken(decoded);
