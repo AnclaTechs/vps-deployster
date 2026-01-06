@@ -1,4 +1,5 @@
 const WebSocket = require("ws");
+const cookie = require("cookie");
 const pty = require("node-pty");
 const { verifyToken, findUserByDecodedToken } = require("../middlewares");
 
@@ -13,8 +14,8 @@ function setupTerminalWSS(server) {
       sslConnection = req.socket.encrypted;
       protocol = sslConnection ? "https" : "http";
       url = new URL(req.url, `${protocol}://${req.headers.host}`);
-      const token = req.cookies.token;
-
+      const cookies = cookie.parse(req.headers.cookie || "");
+      const token = cookies.token;
       const decoded = await verifyToken(token);
       const user = await findUserByDecodedToken(decoded);
       req.user = user;

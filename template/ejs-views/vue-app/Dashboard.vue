@@ -515,7 +515,7 @@ module.exports = {
       offcanvasElement.addEventListener("hidden.bs.offcanvas", () => {
         if (this.terminal) {
           this.resetTerminalSession();
-          this.terminal.dispose();
+          this.terminal?.dispose();
           this.terminal = null;
         }
       });
