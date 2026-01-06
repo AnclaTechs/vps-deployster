@@ -2322,12 +2322,12 @@ async function getPgDatabaseQuickSummary(req, res) {
       SELECT
         con.conname AS constraint_name,
         CASE con.contype
-          WHEN 'p' THEN 'PRIMARY KEY'::text
-          WHEN 'f' THEN 'FOREIGN KEY'::text
-          WHEN 'u' THEN 'UNIQUE'::text
-          WHEN 'c' THEN 'CHECK'::text
-          WHEN 'x' THEN 'EXCLUSION'::text
-          ELSE con.contype
+          WHEN 'p' THEN 'PRIMARY KEY'
+          WHEN 'f' THEN 'FOREIGN KEY'
+          WHEN 'u' THEN 'UNIQUE'
+          WHEN 'c' THEN 'CHECK'
+          WHEN 'x' THEN 'EXCLUSION'
+          ELSE con.contype::text
         END AS constraint_description,
         nsp.nspname AS schema,
         rel.relname AS table_name,
