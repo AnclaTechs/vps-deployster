@@ -734,7 +734,19 @@ async function getRedisPassword(host = "127.0.0.1", port = 6379) {
 }
 
 async function listPostgresClusters() {
+  const commandExists = async (cmd) => {
+    try {
+      await runShell(`command -v ${cmd}`);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   try {
+    const hasPg = await commandExists("psql");
+    if (!hasPg) return [];
+
     // Get with pg_lsclusters first
     const output = await runShell("pg_lsclusters");
 
