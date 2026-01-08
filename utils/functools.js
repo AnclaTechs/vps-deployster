@@ -538,9 +538,21 @@ async function serverActionHandler(projectId, actionType, pipelineStageUUID) {
       const envString = keyValues.join("\n");
       const escapedEnvString = envString.replace(/"/g, '\\"');
       const envCommand = `echo "${escapedEnvString}" > .env`;
+      const stageEnvCommand = `echo "${escapedEnvString}" > dply.env.${pipelineStage.git_branch}"`;
+      /**
+       * We maintain a branch-specific environment file (dply.env.${branch}) to ensure state consistency and preempt configuration drift.
+       * This acts as a source of truth that allows the Supervisor process to self-heal or synchronize
+       * the active .env file independently of the deployment tool.
+       * This ensures that whether a restart is triggered via Deployster or manually via terminal,
+       * the process always bootstraps with the correct environment variables.
+       * Example Supervisor command:
+       * command=/bin/bash -c "if [ -f dply.env.main ]; then cp dply.env.main .env; fi && exec ..."
+       * */
 
       try {
-        await runShell(`cd ${project.app_local_path} && ${envCommand}`);
+        await runShell(
+          `cd ${project.app_local_path} && ${envCommand} && ${stageEnvCommand}`
+        );
       } catch (error) {
         return {
           status: false,

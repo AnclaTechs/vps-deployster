@@ -253,10 +253,12 @@ app.post("/deploy", async (req, res) => {
 
         const envString = keyValues.join("\n");
         const escapedEnvString = envString.replace(/"/g, '\\"');
-        const envCommand = `echo "${escapedEnvString}" > .env`;
+        const envCommand = `echo "${escapedEnvString}" > .env && echo ".env setup successful"`;
+        const stageEnvCommand = `echo "${escapedEnvString}" > dply.env.${pipelineStage.git_branch} && echo "dply.env.${pipelineStage.git_branch} setup successful"`;
+        /**See functool/serverActionHandler.js for more explanation on why mirroring the environment to a branch-specific file is imperative */
 
         // Insert .env creation right at the beginning of the command chain
-        commands.unshift(envCommand);
+        commands.unshift(stageEnvCommand, envCommand);
       }
     }
 
