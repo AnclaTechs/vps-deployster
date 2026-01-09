@@ -538,7 +538,7 @@ async function serverActionHandler(projectId, actionType, pipelineStageUUID) {
       const envString = keyValues.join("\n");
       const escapedEnvString = envString.replace(/"/g, '\\"');
       const envCommand = `echo "${escapedEnvString}" > .env`;
-      const stageEnvCommand = `echo "${escapedEnvString}" > dply.env.${pipelineStage.git_branch}"`;
+      const stageEnvCommand = `echo "${escapedEnvString}" > dply.env.${pipelineStage.git_branch}`;
       /**
        * We maintain a branch-specific environment file (dply.env.${branch}) to ensure state consistency and preempt configuration drift.
        * This acts as a source of truth that allows the Supervisor process to self-heal or synchronize
