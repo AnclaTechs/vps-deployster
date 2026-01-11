@@ -1098,19 +1098,36 @@ function replaceEmailTemplatePlaceholders(template, data) {
  * @returns {string} - Shell command to run
  */
 function generateMaskedCommandFromString(outputFile, escapedEnvString, maskKeyword = "::add-mask::") {
- return `
+  // Generate a random pass for encryption
+  const password = Math.random().toString(36).substring(2, 30);
+
+  // Encrypt the string using openssl
+  const encrypted = execSync(
+    `echo "${escapedEnvString.replace(
+      /"/g,
+      '\\"'
+    )}" | openssl enc -aes-256-cbc -a -pass pass:${password} -pbkdf2`,
+    { encoding: "utf-8" }
+  ).trim();
+
+  return `
 set +x  # disable tracing
 set -e  # exit on error
 
+
+ENV_CONTENT=\$(echo "${encrypted}" | \\
+  openssl enc -aes-256-cbc -d -a -pass pass:${password} -pbkdf2 2>/dev/null)
+
+
 # Mask all values
-printf "%s\n" ${escapedEnvString} |
+printf "%s\n" "$ENV_CONTENT" |
 while IFS='=' read -r key value; do
   [ -z "$key" ] && continue
   echo "${maskKeyword}$value"
 done
 
 # Write to file safely
-printf "%s\n" ${escapedEnvString} > ${outputFile}
+printf "%s\n" "$ENV_CONTENT" > .env ${outputFile}
 
 echo "${outputFile} setup successful"
 set -x
