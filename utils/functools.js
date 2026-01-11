@@ -1093,12 +1093,14 @@ function replaceEmailTemplatePlaceholders(template, data) {
  * from a single multiline string (/bin/sh).
  *
  * @param {string} outputFile - Name of the output file (e.g., ".env")
+ * @param {string} outputBackupFile - Name of the output file II
  * @param {string} escapedEnvString - Multiline string with VAR=VALUE pairs
  * @param {string} maskKeyword - Masking keyword (default "::add-mask::")
  * @returns {string} - Shell command to run
  */
 function generateMaskedCommandFromString(
   outputFile,
+  outputBackupFile,
   escapedEnvString,
   maskKeyword = "::add-mask::"
 ) {
@@ -1130,10 +1132,11 @@ while IFS='=' read -r key value; do
   echo "${maskKeyword}$value"
 done
 
-# Write to file safely
-printf "%s\n" "$ENV_CONTENT" > ${outputFile}
-
+# Write to file(s) safely
+printf "%s\n" "$ENV_CONTENT" | tee "${outputFile}" "${outputBackupFile}" >/dev/null
 echo "${outputFile} setup successful"
+echo "${outputBackupFile} setup successful"
+
 set -x
 `.trim();
 }

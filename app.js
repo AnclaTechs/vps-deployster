@@ -259,18 +259,17 @@ app.post("/deploy", async (req, res) => {
         });
 
         const escapedEnvString = keyValues.join("\n");
+        const envFileName = ".env";
+        const stageEnvFileName = `dply.env.${pipelineStage.git_branch}`;
         const envCommand = generateMaskedCommandFromString(
-          ".env",
-          escapedEnvString
-        );
-        const stageEnvCommand = generateMaskedCommandFromString(
-          `dply.env.${pipelineStage.git_branch}`,
+          envFileName,
+          stageEnvFileName,
           escapedEnvString
         );
         /**See functool/serverActionHandler.js for more explanation on why mirroring the environment to a branch-specific file is imperative */
 
         // Insert .env creation right at the beginning of the command chain
-        commands.unshift(stageEnvCommand, envCommand);
+        commands.unshift(envCommand);
       }
     }
 
