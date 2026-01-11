@@ -1102,20 +1102,15 @@ function generateMaskedCommandFromString(outputFile, escapedEnvString, maskKeywo
 set +x  # disable tracing
 set -e  # exit on error
 
-ENV_CONTENT=$(cat <<'EOF'
-${escapedEnvString}
-EOF
-)
-
 # Mask all values
-printf "%s\n" "$ENV_CONTENT" |
+printf "%s\n" ${escapedEnvString} |
 while IFS='=' read -r key value; do
   [ -z "$key" ] && continue
   echo "${maskKeyword}$value"
 done
 
 # Write to file safely
-printf "%s\n" "$ENV_CONTENT" > ${outputFile}
+printf "%s\n" ${escapedEnvString} > ${outputFile}
 
 echo "${outputFile} setup successful"
 set -x
