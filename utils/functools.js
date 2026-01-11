@@ -1104,38 +1104,39 @@ function generateMaskedCommandFromString(
   escapedEnvString,
   maskKeyword = "::add-mask::"
 ) {
-  // Generate a random pass for encryption
-  const password = process.env.DEPLOYSTER_TOKEN;
+  // Using the DEPLOY_TOKEN ensures GitHub masks it automatically,
+  // since it is stored as a repository secret.
+  const token = process.env.DEPLOY_TOKEN;
 
-  // Encrypt the string using openssl
   const encrypted = execSync(
+    // Encrypt the string using openssl
     `echo "${escapedEnvString.replace(
       /"/g,
       '\\"'
-    )}" | openssl enc -aes-256-cbc -a -pass pass:"${password}" -pbkdf2`,
+    )}" | openssl enc -aes-256-cbc -a -pass pass:"${token}" -pbkdf2`,
     { encoding: "utf-8" }
   ).trim();
 
+  /**
+   * I took the Mask out since it's already encrpted with openssl
+   *
+   * # Mask all values
+   * printf "%s\n" "$ENV_CONTENT" |
+   * while IFS='=' read -r key value; do
+   *  [ -z "$key" ] && continue
+   * echo "${maskKeyword}$value"
+   * done
+   */
+
   return `
-set +x  # disable tracing
-set -e  # exit on error
+set +x
+set -e
 
 
 ENV_CONTENT=\$(echo "${encrypted}" | \\
-  openssl enc -aes-256-cbc -d -a -pass pass:${password} -pbkdf2 2>/dev/null)
+  openssl enc -aes-256-cbc -d -a -pass pass:${token} -pbkdf2 2>/dev/null)
 
-
-# Mask all values
-printf "%s\n" "$ENV_CONTENT" |
-while IFS='=' read -r key value; do
-  [ -z "$key" ] && continue
-  echo "${maskKeyword}$value"
-done
-
-# Write to file(s) safely
 printf "%s\n" "$ENV_CONTENT" | tee "${outputFile}" "${outputBackupFile}" >/dev/null
-echo "${outputFile} setup successful"
-echo "${outputBackupFile} setup successful"
 
 set -x
 `.trim();

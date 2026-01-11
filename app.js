@@ -269,7 +269,10 @@ app.post("/deploy", async (req, res) => {
         /**See functool/serverActionHandler.js for more explanation on why mirroring the environment to a branch-specific file is imperative */
 
         // Insert .env creation right at the beginning of the command chain
-        commands.unshift(envCommand);
+        commands.unshift(
+          envCommand,
+          `echo "${envFileName} setup successful" && echo "${stageEnvFileName} setup successful"`
+        );
       }
     }
 
