@@ -1087,6 +1087,36 @@ function replaceEmailTemplatePlaceholders(template, data) {
   return result;
 };
 
+
+/**
+ * Generates a Remote Git Actions-safe shell command
+ * from a single multiline string.
+ *
+ * @param {string} outputFile - Name of the output file (e.g., ".env")
+ * @param {string} escapedEnvString - Multiline string with VAR=VALUE pairs
+ * @param {string} maskKeyword - Masking keyword (default "::add-mask::")
+ * @returns {string} - Shell command to run
+ */
+function generateMaskedCommandFromString(outputFile, escapedEnvString, maskKeyword = "::add-mask::") {
+ return `
+set +x  # disable tracing
+set -e  # exit on error
+
+# Mask all values
+while IFS='=' read -r key value; do
+  [ -z "$key" ] && continue
+  echo "${maskKeyword}$value"
+done <<< \`${escapedEnvString}\`
+
+# Write to file safely
+printf "%s\\n" \`${escapedEnvString}\` > ${outputFile}
+
+echo "${outputFile} setup successful"
+set -x
+`.trim();
+}
+
+
 module.exports = {
   isIPAddress,
   getProjectPort,
@@ -1122,4 +1152,5 @@ module.exports = {
   getSystemMonitorLog,
   verifyTwoFactorToken,
   replaceEmailTemplatePlaceholders,
+  generateMaskedCommandFromString,
 };

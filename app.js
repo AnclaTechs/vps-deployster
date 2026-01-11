@@ -26,6 +26,7 @@ const {
   runShell,
   updatePipelineGitHead,
   getProjectPipelineJSON,
+  generateMaskedCommandFromString,
 } = require("./utils/functools");
 const { DEPLOYMENT_STATUS } = require("./utils/constants");
 const setupTerminalWSS = require("./webscokets");
@@ -246,15 +247,26 @@ app.post("/deploy", async (req, res) => {
       if (pipelineStage && Array.isArray(pipelineStage.environment_variables)) {
         const keyValues = pipelineStage.environment_variables.map((env) => {
           // SUPPORT lower and upper case
-          const key = env.key ?? env.KEY;
-          const value = env.value ?? env.VALUE;
-          return `${key}=${value}`;
+          const key = (env.key ?? env.KEY ?? "").trim();
+          const value = (env.value ?? env.VALUE ?? "").trim();
+
+          if (!key) return null;
+
+          // Escape double quotes and backslashes
+          const safeValue = value.replace(/(["\\$`])/g, "\\$1");
+
+          return `${key}=${safeValue}`;
         });
 
-        const envString = keyValues.join("\n");
-        const escapedEnvString = envString.replace(/"/g, '\\"');
-        const envCommand = `echo "${escapedEnvString}" > .env && echo ".env setup successful"`;
-        const stageEnvCommand = `echo "${escapedEnvString}" > dply.env.${pipelineStage.git_branch} && echo "dply.env.${pipelineStage.git_branch} setup successful"`;
+        const escapedEnvString = keyValues.join("\n");
+        const envCommand = generateMaskedCommandFromString(
+          ".env",
+          escapedEnvString
+        );
+        const stageEnvCommand = generateMaskedCommandFromString(
+          `dply.env.${pipelineStage.git_branch}`,
+          escapedEnvString
+        );
         /**See functool/serverActionHandler.js for more explanation on why mirroring the environment to a branch-specific file is imperative */
 
         // Insert .env creation right at the beginning of the command chain
