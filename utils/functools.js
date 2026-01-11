@@ -1102,23 +1102,42 @@ function generateMaskedCommandFromString(
   escapedEnvString,
   maskKeyword = "::add-mask::"
 ) {
+  // Generate a random pass for encryption
+  const password = process.env.DEPLOYSTER_TOKEN;
+
+  // Encrypt the string using openssl
+  const encrypted = execSync(
+    `echo "${escapedEnvString.replace(
+      /"/g,
+      '\\"'
+    )}" | openssl enc -aes-256-cbc -a -pass pass:"${password}" -pbkdf2`,
+    { encoding: "utf-8" }
+  ).trim();
+
   return `
 set +x  # disable tracing
 set -e  # exit on error
 
-# Use GitHub secret directly to encrypt/decrypt
-echo '${escapedEnvString}' | \\
-openssl enc -aes-256-cbc -a -pbkdf2 -pass pass:"\${{ secrets.DEPLOY_TOKEN }}" | \\
-openssl enc -aes-256-cbc -d -a -pbkdf2 -pass pass:"\${{ secrets.DEPLOY_TOKEN }}" 2>/dev/null | \\
-tee >(while IFS='=' read -r key value; do
-    [ -z "$key" ] && continue
-    echo "${maskKeyword}$value"
-done) > ${outputFile} >/dev/null
+
+ENV_CONTENT=\$(echo "${encrypted}" | \\
+  openssl enc -aes-256-cbc -d -a -pass pass:${password} -pbkdf2 2>/dev/null)
+
+
+# Mask all values
+printf "%s\n" "$ENV_CONTENT" |
+while IFS='=' read -r key value; do
+  [ -z "$key" ] && continue
+  echo "${maskKeyword}$value"
+done
+
+# Write to file safely
+printf "%s\n" "$ENV_CONTENT" > ${outputFile}
 
 echo "${outputFile} setup successful"
 set -x
 `.trim();
 }
+
 
 module.exports = {
   isIPAddress,
