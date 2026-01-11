@@ -1090,7 +1090,7 @@ function replaceEmailTemplatePlaceholders(template, data) {
 
 /**
  * Generates a Remote Git Actions-safe shell command
- * from a single multiline string.
+ * from a single multiline string (/bin/sh).
  *
  * @param {string} outputFile - Name of the output file (e.g., ".env")
  * @param {string} escapedEnvString - Multiline string with VAR=VALUE pairs
@@ -1103,13 +1103,14 @@ set +x  # disable tracing
 set -e  # exit on error
 
 # Mask all values
+printf "%s\n" "$escapedEnvString" |
 while IFS='=' read -r key value; do
   [ -z "$key" ] && continue
   echo "${maskKeyword}$value"
-done <<< \`${escapedEnvString}\`
+done
 
 # Write to file safely
-printf "%s\\n" \`${escapedEnvString}\` > ${outputFile}
+printf "%s\n" "$escapedEnvString" > ${outputFile}
 
 echo "${outputFile} setup successful"
 set -x
