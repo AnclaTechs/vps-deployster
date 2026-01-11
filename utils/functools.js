@@ -1106,7 +1106,7 @@ function generateMaskedCommandFromString(
 ) {
   // Using the DEPLOY_TOKEN ensures GitHub masks it automatically,
   // since it is stored as a repository secret.
-  const token = process.env.DEPLOY_TOKEN;
+  const token = process.env.DEPLOYSTER_TOKEN;
 
   const encrypted = execSync(
     // Encrypt the string using openssl
