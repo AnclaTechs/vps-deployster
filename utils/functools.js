@@ -863,10 +863,12 @@ async function runNativePsqlQuery({
     ? "--csv -v ON_ERROR_STOP=1"
     : "-v ON_ERROR_STOP=1 -t -A";
 
+  const escapedQuery = query.replace(/"/g, '\\"').replace(/\n/g, " ");
   const output = await runShell(
-    `psql -h ${host} -p ${port} -U ${user} -d ${database} ${modeFlags} -c "${query}"`,
+    `psql -h ${host} -p ${port} -U ${user} -d ${database} ${modeFlags} -c "${escapedQuery}"`,
     { env: { ...process.env, PGPASSWORD: password } }
   );
+
   return output.trim();
 }
 
@@ -922,11 +924,10 @@ function cleanSqlQuery(query) {
   // Remove leading/trailing spaces & blank lines
   return query
     .trim()
-    .replace(/\r\n/g, "\n") // normalize Windows newlines
-    .replace(/\n\s*\n/g, "\n") // remove multiple blank lines
-    .replace(/\s+$/gm, "") // remove trailing spaces per line
-    .replace(/;$/, "") // optional: remove trailing semicolon
-    .replace(/[\x00-\x1F\x7F]/g, ""); // remove control chars
+    .replace(/\r\n/g, "\n")
+    .replace(/[\n\t]+/g, " ") // replace breaks with SPACE
+    .replace(/\s{2,}/g, " ") // collapse extra spaces
+    .replace(/;$/, "");
 }
 
 async function getCpuTopology() {

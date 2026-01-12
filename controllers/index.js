@@ -2386,7 +2386,9 @@ async function runPgDbQuery(req, res) {
     const { query } = req.body;
     const database = req.params.database;
 
-    cleanedQuery = cleanSqlQuery(query);
+    const cleanedQuery = cleanSqlQuery(query);
+
+    // console.log({ cleanedQuery, query });
 
     const start = Date.now();
 
@@ -2396,7 +2398,7 @@ async function runPgDbQuery(req, res) {
       user: pgData.pgCredentials.username,
       password: pgData.pgCredentials.password,
       database,
-      query,
+      query: cleanedQuery,
       csvOutput: true,
     });
 
